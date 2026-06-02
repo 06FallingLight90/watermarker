@@ -1,0 +1,52 @@
+# ── Dependencies ──
+node_modules/
+
+# ── Rust / Tauri build artifacts ──
+src-tauri/target/
+src-tauri/icons/icon.ico
+src-tauri/icons/icon.icns
+
+# ── Frontend build output ──
+dist/
+
+# ── Local release packages ──
+release/
+
+# ── OS generated files ──
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# ── Environment ──
+.env
+.env.local
+.env.*.local
+
+# ── Logs ──
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Claude Code ──
+.claude/
+
+# ── Test output ──
+/test
+test/
+
