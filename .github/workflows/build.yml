@@ -2,40 +2,55 @@ name: Build Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+
+# Required for creating releases and uploading assets
+permissions:
+  contents: write
 
 jobs:
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
-        with: { node-version: "22" }
-      - run: npm install
-      - name: Build
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri (Windows NSIS)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Watermarker v__VERSION__"
-          releaseBody: "See assets below."
-          releaseDraft: true
+          releaseBody: "Windows 安装包。解压或安装后双击运行，系统需安装 WebView2（Windows 10+ 已自带）。"
+          releaseDraft: false
           args: --bundles nsis
 
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
-        with: { node-version: "22" }
-      - run: npm install
-      - name: Build
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri (macOS DMG)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Watermarker v__VERSION__"
-          releaseBody: "See assets below."
-          releaseDraft: true
+          releaseBody: "macOS 安装包。打开 DMG 将 Watermarker 拖入 Applications 即可。"
+          releaseDraft: false
           args: --bundles dmg
