@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useBatchStore } from "@/stores/batch";
+import { useImageStore } from "@/stores/image";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
 import { renderOffscreen, type ExportFormat } from "@/composables/useCanvas";
 
 const batchStore = useBatchStore();
+const imageStore = useImageStore();
 const watermarkStore = useWatermarkStore();
-const { exportFile, loadImage: loadImageCmd } = useTauriCommands();
+const { exportFile, loadImage: loadImageCmd, loadImageRaw } = useTauriCommands();
 
 const expanded = ref(false);
 const outputDir = ref("");
@@ -21,7 +23,18 @@ async function selectFiles() {
       filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "bmp", "webp"] }],
     });
     if (selected) {
-      batchStore.addFiles(Array.isArray(selected) ? selected : [selected as string]);
+      const files = Array.isArray(selected) ? selected : [selected as string];
+      batchStore.addFiles(files);
+
+      // Auto-load the first file into preview if no image is currently displayed
+      if (!imageStore.hasImage) {
+        try {
+          const info = await loadImageCmd(files[0]);
+          imageStore.setImage(info, files[0]);
+        } catch {
+          // If loading fails, it's still fine — the file stays in the batch queue
+        }
+      }
     }
   } catch (e) {
     console.error("Failed to select files:", e);
@@ -70,8 +83,9 @@ async function startBatch() {
     });
 
     try {
-      const info = await loadImageCmd(filePath);
-      const base64 = await renderOffscreen(info.base64, batchFormat.value, watermarkStore);
+      const raw = await loadImageRaw(filePath);
+      const sourceMime = `image/${raw.format || "jpeg"}`;
+      const base64 = await renderOffscreen(raw.base64, batchFormat.value, watermarkStore, sourceMime);
 
       const ext = batchFormat.value;
       const outPath = `${outputDir.value}/watermarked_${fileName.replace(/\.[^.]+$/, "")}.${ext}`;

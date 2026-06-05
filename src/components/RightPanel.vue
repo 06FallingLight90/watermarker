@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useImageStore } from "@/stores/image";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useBatchStore } from "@/stores/batch";
@@ -9,11 +9,24 @@ import { renderFullRes, type ExportFormat } from "@/composables/useCanvas";
 const imageStore = useImageStore();
 const watermarkStore = useWatermarkStore();
 const batchStore = useBatchStore();
-const { exportFile } = useTauriCommands();
+const { exportFile, loadImageRaw, listSystemFonts } = useTauriCommands();
+
+// Load system fonts on mount
+onMounted(async () => {
+  if (watermarkStore.fontsLoaded) return;
+  try {
+    watermarkStore.systemFonts = await listSystemFonts();
+    watermarkStore.fontsLoaded = true;
+  } catch (e) {
+    console.error("Failed to list system fonts:", e);
+  }
+});
 
 const exporting = ref(false);
 const exportError = ref("");
 const exportFormat = ref<ExportFormat>("png");
+const logoError = ref("");
+const fontError = ref("");
 
 const watermarkTypes = [
   { label: "文字水印", value: "text" as const },
@@ -21,6 +34,7 @@ const watermarkTypes = [
 ];
 
 async function selectLogo() {
+  logoError.value = "";
   try {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
@@ -29,12 +43,70 @@ async function selectLogo() {
     });
     if (selected) {
       const path = selected as string;
-      const { invoke } = await import("@tauri-apps/api/core");
-      const info = await invoke<{ base64: string }>("load_image", { path });
-      watermarkStore.logoConfig.logo_base64 = info.base64;
+      const raw = await loadImageRaw(path);
+      watermarkStore.logoConfig.logo_base64 = raw.base64;
+      watermarkStore.logoFormat = raw.format;
     }
   } catch (e) {
+    logoError.value = `Logo 加载失败: ${e}`;
     console.error("Failed to load logo:", e);
+  }
+}
+
+async function loadFontFromPath(path: string) {
+  // Read font file as raw bytes
+  const raw = await loadImageRaw(path);
+
+  // Determine MIME from extension
+  const ext = path.split(".").pop()?.toLowerCase();
+  const mime = ext === "otf" ? "font/otf" : "font/ttf";
+
+  // Derive font family name from filename
+  const fileName = path.split(/[\\/]/).pop() ?? "CustomFont";
+  const familyName = fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, " ");
+
+  // Register font via FontFace API
+  const fontFace = new FontFace(familyName, `url(data:${mime};base64,${raw.base64})`);
+  await fontFace.load();
+  document.fonts.add(fontFace);
+
+  watermarkStore.fontFamily = familyName;
+  watermarkStore.fontPath = path;
+}
+
+async function selectFont() {
+  fontError.value = "";
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Fonts", extensions: ["ttf", "otf", "ttc"] }],
+    });
+    if (!selected) return;
+    await loadFontFromPath(selected as string);
+  } catch (e) {
+    fontError.value = `字体加载失败: ${e}`;
+    console.error("Failed to load font:", e);
+  }
+}
+
+async function onFontSelect(e: Event) {
+  fontError.value = "";
+  const path = (e.target as HTMLSelectElement).value;
+  if (!path) {
+    // Reset to system default
+    watermarkStore.fontFamily = "Arial, sans-serif";
+    return;
+  }
+  if (path === "__browse__") {
+    await selectFont();
+    return;
+  }
+  try {
+    await loadFontFromPath(path);
+  } catch (err) {
+    fontError.value = `字体加载失败: ${err}`;
+    console.error("Failed to load font:", err);
   }
 }
 
@@ -105,14 +177,39 @@ function addToBatch() {
         <input type="text" v-model="watermarkStore.textConfig.text" class="input" />
       </label>
       <label>
+        字体
+        <select class="font-select" @change="onFontSelect">
+          <option value="">Arial (系统默认)</option>
+          <option
+            v-for="f in watermarkStore.systemFonts"
+            :key="f.path"
+            :value="f.path"
+          >{{ f.name }}</option>
+          <option value="__browse__">手动选择字体文件...</option>
+        </select>
+        <span class="font-current">{{ watermarkStore.fontFamily }}</span>
+        <p v-if="fontError" class="error-msg">{{ fontError }}</p>
+      </label>
+      <label>
         字体大小
         <input
           type="range"
           min="12"
-          max="200"
+          max="500"
           v-model.number="watermarkStore.textConfig.font_size"
         />
         <span class="range-val">{{ watermarkStore.textConfig.font_size }}px</span>
+      </label>
+      <label>
+        旋转角度
+        <input
+          type="range"
+          min="0"
+          max="360"
+          step="1"
+          v-model.number="watermarkStore.textConfig.rotation"
+        />
+        <span class="range-val">{{ watermarkStore.textConfig.rotation }}°</span>
       </label>
       <label>
         透明度
@@ -162,6 +259,7 @@ function addToBatch() {
     <div v-if="watermarkStore.watermarkType === 'logo'" class="config-group">
       <button class="btn btn-sm" @click="selectLogo">选择 Logo 图片</button>
       <p v-if="watermarkStore.logoConfig.logo_base64" class="logo-loaded">Logo 已加载</p>
+      <p v-if="logoError" class="error-msg">{{ logoError }}</p>
       <label>
         透明度
         <input
@@ -174,15 +272,26 @@ function addToBatch() {
         <span class="range-val">{{ Math.round(watermarkStore.logoConfig.opacity * 100) }}%</span>
       </label>
       <label>
-        缩放
-        <input
-          type="range"
-          min="0.1"
-          max="2"
-          step="0.05"
-          v-model.number="watermarkStore.logoConfig.scale"
-        />
-        <span class="range-val">{{ Math.round(watermarkStore.logoConfig.scale * 100) }}%</span>
+        缩放（占照片宽度百分比）
+        <div class="scale-row">
+          <input
+            type="range"
+            min="5"
+            max="100"
+            step="1"
+            v-model.number="watermarkStore.logoConfig.scale"
+            class="scale-slider"
+          />
+          <input
+            type="number"
+            min="1"
+            max="100"
+            step="1"
+            v-model.number="watermarkStore.logoConfig.scale"
+            class="scale-input"
+          />
+          <span class="range-val">{{ watermarkStore.logoConfig.scale }}%</span>
+        </div>
       </label>
       <label>
         水平位置
@@ -299,6 +408,52 @@ function addToBatch() {
 input[type="range"] {
   width: 100%;
   accent-color: #4a9;
+}
+
+.font-select {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  color: #ddd;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+}
+.font-current {
+  font-size: 12px;
+  color: #4a9;
+}
+
+.font-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.font-name {
+  font-size: 12px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scale-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.scale-slider {
+  flex: 1;
+}
+.scale-input {
+  width: 62px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  color: #ddd;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
 }
 
 .range-val {

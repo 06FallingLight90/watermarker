@@ -1,7 +1,8 @@
 import { ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import { useImageStore } from "@/stores/image";
 import { useWatermarkStore } from "@/stores/watermark";
-import type { TextWatermarkConfig, LogoWatermarkConfig } from "@/types";
+import type { TextWatermarkConfig, LogoWatermarkConfig, RawImageData } from "@/types";
 
 export type ExportFormat = "png" | "jpeg";
 
@@ -15,10 +16,13 @@ export type ExportFormat = "png" | "jpeg";
 export async function renderFullRes(format: ExportFormat): Promise<string> {
   const imageStore = useImageStore();
   const watermarkStore = useWatermarkStore();
-  const img = imageStore.currentImage;
-  if (!img) throw new Error("No image loaded");
+  const filePath = imageStore.filePath;
+  if (!filePath) throw new Error("No image loaded");
 
-  const mainImg = await loadImageFromBase64(img.base64);
+  // Load original file bytes (no re-encoding loss) for full-resolution export
+  const raw = await invoke<RawImageData>("load_image_raw", { path: filePath });
+  const sourceMime = `image/${raw.format || "jpeg"}`;
+  const mainImg = await loadImageFromBase64(raw.base64, sourceMime);
   const w = mainImg.width;
   const h = mainImg.height;
 
@@ -39,9 +43,10 @@ export async function renderFullRes(format: ExportFormat): Promise<string> {
 export async function renderOffscreen(
   imageBase64: string,
   format: ExportFormat,
-  watermarkStore: ReturnType<typeof useWatermarkStore>
+  watermarkStore: ReturnType<typeof useWatermarkStore>,
+  sourceMime?: string
 ): Promise<string> {
-  const mainImg = await loadImageFromBase64(imageBase64);
+  const mainImg = await loadImageFromBase64(imageBase64, sourceMime);
   const { width: w, height: h } = mainImg;
 
   const canvas = document.createElement("canvas");
@@ -81,12 +86,12 @@ async function renderWatermarkStatic(
   if (!watermarkStore.enabled) return;
 
   if (watermarkStore.watermarkType === "text") {
-    drawTextWatermarkStatic(ctx, canvas, watermarkStore.textConfig, scale);
+    drawTextWatermarkStatic(ctx, canvas, watermarkStore.textConfig, scale, watermarkStore.fontFamily);
   } else if (
     watermarkStore.watermarkType === "logo" &&
     watermarkStore.logoConfig.logo_base64
   ) {
-    await drawLogoWatermarkStatic(ctx, canvas, watermarkStore.logoConfig, scale);
+    await drawLogoWatermarkStatic(ctx, canvas, watermarkStore.logoConfig, scale, watermarkStore.logoFormat);
   }
 }
 
@@ -94,48 +99,63 @@ function drawTextWatermarkStatic(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   config: TextWatermarkConfig,
-  scale: number
+  scale: number,
+  fontFamily = "Arial, sans-serif"
 ): void {
-  const { text, font_size, color, pos_x, pos_y, opacity, tile_spacing } = config;
+  const { text, font_size, color, pos_x, pos_y, opacity, tile_spacing, rotation } = config;
   const [r, g, b, a] = color;
   const alpha = opacity > 0 ? opacity : a / 255;
 
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = `rgb(${r},${g},${b})`;
   const scaledSize = font_size * scale;
-  ctx.font = `${scaledSize}px Arial, sans-serif`;
+  ctx.font = `${scaledSize}px "${fontFamily}", Arial, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
   const x = pos_x * canvas.width;
   const y = pos_y * canvas.height;
+  const angle = (rotation ?? 0) * Math.PI / 180;
 
   if (tile_spacing > 0) {
     const spacing = Math.max(tile_spacing * scale, 50);
     const textW = ctx.measureText(text).width;
     for (let row = 0; row < canvas.height + scaledSize; row += spacing + scaledSize) {
       for (let col = 0; col < canvas.width + textW; col += spacing + textW) {
-        ctx.fillText(text, col, row);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.translate(col, row);
+        if (angle !== 0) ctx.rotate(angle);
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
       }
     }
   } else {
-    ctx.fillText(text, x, y);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.translate(x, y);
+    if (angle !== 0) ctx.rotate(angle);
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
   }
-
-  ctx.restore();
 }
 
 async function drawLogoWatermarkStatic(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   config: LogoWatermarkConfig,
-  renderScale: number
+  _renderScale: number,
+  format = "png"
 ): Promise<void> {
   const { logo_base64, opacity, scale, pos_x, pos_y } = config;
-  const logoImg = await loadImageFromBase64(logo_base64, "image/png");
-  const logoW = logoImg.width * scale * renderScale;
-  const logoH = logoImg.height * scale * renderScale;
+  const mime = `image/${format}`;
+  const logoImg = await loadImageFromBase64(logo_base64, mime);
+
+  // scale is now a percentage of the photo's width (1–100).
+  // canvas.width embeds the current render scale, so this works for both preview and export.
+  const logoW = canvas.width * (scale / 100);
+  const aspectRatio = logoImg.width / logoImg.height;
+  const logoH = logoW / aspectRatio;
   const x = pos_x * canvas.width - logoW / 2;
   const y = pos_y * canvas.height - logoH / 2;
 

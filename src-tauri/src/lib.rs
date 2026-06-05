@@ -1,5 +1,5 @@
 mod commands;
-mod engine;
+pub mod engine;
 
 use commands::{batch, exif, image, watermark};
 
@@ -10,6 +10,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             image::load_image,
+            image::list_system_fonts,
+            image::load_image_raw,
             image::save_image,
             image::export_file,
             exif::read_exif,

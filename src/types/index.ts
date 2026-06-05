@@ -7,6 +7,12 @@ export interface ImageInfo {
   base64: string;
 }
 
+/** Raw image data (original file bytes, no re-encoding). Used for logo loading. */
+export interface RawImageData {
+  base64: string;
+  format: string; // "png" | "jpeg"
+}
+
 export interface ExifData {
   camera_make: string | null;
   camera_model: string | null;
@@ -63,6 +69,11 @@ export interface BatchConfig {
   logo_config: LogoWatermarkConfig | null;
   font_path: string | null;
   output_dir: string;
+}
+
+export interface FontEntry {
+  path: string;
+  name: string;
 }
 
 export type WatermarkType = "text" | "logo";

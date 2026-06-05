@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ImageInfo,
+  RawImageData,
+  FontEntry,
   ExifData,
   TextWatermarkConfig,
   LogoWatermarkConfig,
@@ -10,6 +12,10 @@ import type {
 export function useTauriCommands() {
   async function loadImage(path: string): Promise<ImageInfo> {
     return invoke<ImageInfo>("load_image", { path });
+  }
+
+  async function loadImageRaw(path: string): Promise<RawImageData> {
+    return invoke<RawImageData>("load_image_raw", { path });
   }
 
   async function saveImage(
@@ -54,9 +60,13 @@ export function useTauriCommands() {
     });
   }
 
+  async function listSystemFonts(): Promise<FontEntry[]> {
+    return invoke<FontEntry[]>("list_system_fonts");
+  }
+
   async function exportFile(base64: string, outputPath: string): Promise<void> {
     return invoke("export_file", { base64, outputPath });
   }
 
-  return { loadImage, saveImage, readExif, applyTextWatermark, applyLogoWatermark, exportFile };
+  return { loadImage, loadImageRaw, listSystemFonts, saveImage, readExif, applyTextWatermark, applyLogoWatermark, exportFile };
 }

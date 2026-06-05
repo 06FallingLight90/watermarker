@@ -6,6 +6,13 @@ use std::io::Cursor;
 use std::path::Path;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RawImageData {
+    pub base64: String,
+    /// MIME type suffix, e.g. "png" or "jpeg"
+    pub format: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ImageInfo {
     pub width: u32,
     pub height: u32,
@@ -15,21 +22,23 @@ pub struct ImageInfo {
 }
 
 impl ImageInfo {
-    pub fn from_file(path: &str) -> Result<Self, String> {
+    pub fn from_file(path: &str, quality: u8) -> Result<Self, String> {
         let path = Path::new(path);
         let img = image::open(path).map_err(|e| format!("Failed to open image: {e}"))?;
 
         let (width, height) = (img.width(), img.height());
         let format = detect_format(path);
 
-        // Encode to base64 JPEG for preview
+        // Encode to base64 JPEG for preview.
+        // JPEG does not support RGBA; convert to RGB first.
         let mut buf = Cursor::new(Vec::new());
-        JpegEncoder::new_with_quality(&mut buf, 90)
+        let rgb = img.to_rgb8();
+        JpegEncoder::new_with_quality(&mut buf, quality)
             .write_image(
-                img.as_bytes(),
+                rgb.as_raw(),
                 width,
                 height,
-                img.color().into(),
+                image::ExtendedColorType::Rgb8,
             )
             .map_err(|e| format!("Failed to encode preview: {e}"))?;
 
@@ -42,6 +51,16 @@ impl ImageInfo {
             base64,
         })
     }
+}
+
+/// Read raw file bytes and base64-encode them without any image re-encoding.
+/// Preserves the original format (including PNG alpha channel).
+pub fn load_raw(path: &str) -> Result<RawImageData, String> {
+    let path = Path::new(path);
+    let data = std::fs::read(path).map_err(|e| format!("Failed to read file: {e}"))?;
+    let base64 = BASE64.encode(&data);
+    let format = detect_format(path);
+    Ok(RawImageData { base64, format })
 }
 
 pub fn save_image(
@@ -91,6 +110,55 @@ pub fn rgba_to_rgb(raw: &[u8], w: u32, h: u32) -> Result<Vec<u8>, String> {
         rgb.push(raw[base + 2]);
     }
     Ok(rgb)
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FontEntry {
+    pub path: String,
+    pub name: String,
+}
+
+/// Scan system font directories for .ttf / .otf / .ttc files.
+/// Name is derived from the filename for display purposes.
+pub fn list_system_fonts() -> Vec<FontEntry> {
+    let font_dirs: &[&str] = if cfg!(target_os = "windows") {
+        &["C:\\Windows\\Fonts"]
+    } else if cfg!(target_os = "macos") {
+        &["/System/Library/Fonts", "/Library/Fonts"]
+    } else {
+        &["/usr/share/fonts/truetype", "/usr/local/share/fonts"]
+    };
+
+    let mut fonts = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for dir in font_dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(ext) = path.extension().and_then(|e| e.to_str()) else { continue };
+            let ext_lower = ext.to_lowercase();
+            if ext_lower != "ttf" && ext_lower != "otf" && ext_lower != "ttc" {
+                continue;
+            }
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            // Deduplicate by display name
+            let key = name.to_lowercase();
+            if seen.contains(&key) { continue; }
+            seen.insert(key);
+            fonts.push(FontEntry {
+                path: path.to_string_lossy().to_string(),
+                name,
+            });
+        }
+    }
+
+    fonts.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    fonts
 }
 
 fn detect_format(path: &Path) -> String {

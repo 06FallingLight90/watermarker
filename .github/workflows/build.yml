@@ -67,7 +67,3 @@ jobs:
           releaseDraft: false
           args: --bundles dmg
           signingIdentity: "-"
-<<<<<<< HEAD
-=======
-
->>>>>>> acda1581d45fd4d59e6e7f9a2328050d39be0f09
