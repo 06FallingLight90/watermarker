@@ -32,6 +32,61 @@ jobs:
           releaseDraft: false
           args: --bundles nsis
 
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri (Linux AppImage)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Watermarker v__VERSION__"
+          releaseBody: |
+            ## 安装说明
+
+            ### Windows
+            运行 `Watermarker_*.exe` 安装程序，按向导完成安装。
+
+            ### macOS
+            下载 DMG 后，由于应用未经过 Apple 官方公证，首次打开前需在终端执行：
+            ```
+            sudo xattr -rd com.apple.quarantine /Applications/Watermarker.app
+            ```
+            然后即可正常打开 Watermarker。
+
+            ### Linux
+            下载 `.AppImage` 文件后，添加执行权限并运行：
+            ```
+            chmod +x Watermarker*.AppImage
+            ./Watermarker*.AppImage
+            ```
+          releaseDraft: false
+          args: --bundles appimage
+
   macos:
     runs-on: macos-latest
     steps:

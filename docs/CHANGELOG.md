@@ -8,7 +8,7 @@
 
 ### 新增（自 v0.1.0）
 
-- **Linux AppImage 构建**：支持 `.AppImage` 格式发布
+- **Linux AppImage 构建**：CI 工作流新增 Linux job，构建 `.AppImage` 格式发布
 - **性能优化**：优化批处理和渲染关键路径性能
 - **macOS ad-hoc 签名**：解决 macOS "应用已损坏" 问题
 - **跨平台图标**：RGBA PNG 和 ICO 图标，确保各平台正常显示
