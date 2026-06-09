@@ -1,21 +1,61 @@
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
-import type { TextWatermarkConfig, LogoWatermarkConfig, WatermarkType, FontEntry } from "@/types";
+import type { TextWatermarkConfig, LogoWatermarkConfig, ExifWatermarkConfig, ExifFieldVisibility, ExifFieldStyle, ExifFieldGroup, WatermarkType, FontEntry } from "@/types";
 
 const STORAGE_KEY = "watermarker-config";
+
+const defaultExifFields = (): ExifFieldVisibility => ({
+  camera_model: true,
+  lens_model: true,
+  focal_length: true,
+  aperture: true,
+  shutter_speed: true,
+  iso: true,
+  date_taken: true,
+  gps: true,
+});
+
+const EXIF_STYLE_GROUPS: ExifFieldGroup[] = [
+  "camera_model", "lens_model", "date_taken", "gps", "inline",
+];
+
+function defaultFieldStyle(py: number): ExifFieldStyle {
+  return {
+    font_size: 3.5,
+    color: [255, 255, 255, 200],
+    opacity: 0.8,
+    stroke_color: [0, 0, 0],
+    stroke_width: 0,
+    pos_x: 0.5,
+    pos_y: py,
+    rotation: 0,
+  };
+}
+
+function defaultFieldStyles(): Record<ExifFieldGroup, ExifFieldStyle> {
+  return {
+    camera_model: defaultFieldStyle(0.15),
+    lens_model: defaultFieldStyle(0.30),
+    date_taken: defaultFieldStyle(0.45),
+    gps: defaultFieldStyle(0.60),
+    inline: defaultFieldStyle(0.75),
+  };
+}
 
 export const useWatermarkStore = defineStore("watermark", () => {
   const watermarkType = ref<WatermarkType>("text");
 
   const textConfig = ref<TextWatermarkConfig>({
     text: "Watermark",
-    font_size: 48,
+    font_size: 5,
     color: [255, 255, 255, 200],
     rotation: 0,
     pos_x: 0.5,
     pos_y: 0.5,
     opacity: 0.8,
     tile_spacing: 0,
+    stroke_color: [0, 0, 0],
+    stroke_width: 0,
   });
 
   const logoConfig = ref<LogoWatermarkConfig>({
@@ -25,6 +65,21 @@ export const useWatermarkStore = defineStore("watermark", () => {
     pos_x: 0.5,
     pos_y: 0.5,
     rotation: 0,
+  });
+
+  const exifConfig = ref<ExifWatermarkConfig>({
+    font_size: 3.5,
+    color: [255, 255, 255, 200],
+    rotation: 0,
+    pos_x: 0.5,
+    pos_y: 0.5,
+    opacity: 0.8,
+    tile_spacing: 0,
+    stroke_color: [0, 0, 0],
+    stroke_width: 0,
+    layout_mode: "unified",
+    fields: defaultExifFields(),
+    field_styles: defaultFieldStyles(),
   });
 
   /// MIME format of the loaded logo image ("png" | "jpeg"), used to decode raw base64
@@ -50,9 +105,13 @@ export const useWatermarkStore = defineStore("watermark", () => {
 
   const enabled = ref(true);
 
-  const currentConfig = computed(() =>
-    watermarkType.value === "text" ? textConfig.value : logoConfig.value
-  );
+  const currentConfig = computed(() => {
+    switch (watermarkType.value) {
+      case "text": return textConfig.value;
+      case "logo": return logoConfig.value;
+      case "exif": return exifConfig.value;
+    }
+  });
 
   function setType(type: WatermarkType) {
     watermarkType.value = type;
@@ -61,9 +120,19 @@ export const useWatermarkStore = defineStore("watermark", () => {
   // ── Persistence ──
 
   function saveToStorage() {
+    // Deep-copy field_styles (nested reactive objects with arrays)
+    const stylesCopy: Record<string, ExifFieldStyle> = {};
+    for (const key of EXIF_STYLE_GROUPS) {
+      stylesCopy[key] = { ...exifConfig.value.field_styles[key] };
+    }
     const data: Record<string, unknown> = {
       watermarkType: watermarkType.value,
       textConfig: { ...textConfig.value },
+      exifConfig: {
+        ...exifConfig.value,
+        fields: { ...exifConfig.value.fields },
+        field_styles: stylesCopy,
+      },
       enabled: enabled.value,
       fontPath: fontPath.value,
       fontFamily: fontFamily.value,
@@ -78,13 +147,47 @@ export const useWatermarkStore = defineStore("watermark", () => {
     }
   }
 
+  /** Migrate absolute-px font_size (>30) to relative percentage (≈ old/10) */
+  function migrateFontSize(obj: Record<string, unknown> | undefined, key = "font_size") {
+    if (!obj) return;
+    const v = obj[key];
+    if (typeof v === "number" && v > 30) {
+      obj[key] = Math.round((v / 10) * 10) / 10;
+    }
+  }
+
   function restoreFromStorage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
+
+      // Migrate old absolute font_size values to relative %
+      migrateFontSize(data.textConfig);
+      migrateFontSize(data.exifConfig);
+      if (data.exifConfig?.field_styles) {
+        for (const key of EXIF_STYLE_GROUPS) {
+          migrateFontSize(data.exifConfig.field_styles[key]);
+        }
+      }
+
       if (data.watermarkType) watermarkType.value = data.watermarkType;
       if (data.textConfig) Object.assign(textConfig.value, data.textConfig);
+      if (data.exifConfig) {
+        if (data.exifConfig.fields) {
+          Object.assign(exifConfig.value.fields, data.exifConfig.fields);
+          delete data.exifConfig.fields;
+        }
+        if (data.exifConfig.field_styles) {
+          for (const key of EXIF_STYLE_GROUPS) {
+            if (data.exifConfig.field_styles[key]) {
+              Object.assign(exifConfig.value.field_styles[key], data.exifConfig.field_styles[key]);
+            }
+          }
+          delete data.exifConfig.field_styles;
+        }
+        Object.assign(exifConfig.value, data.exifConfig);
+      }
       if (data.enabled !== undefined) enabled.value = data.enabled;
       if (data.fontPath) fontPath.value = data.fontPath;
       if (data.fontFamily) fontFamily.value = data.fontFamily;
@@ -103,7 +206,7 @@ export const useWatermarkStore = defineStore("watermark", () => {
   // Debounced auto-save on any config change
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   watch(
-    [watermarkType, textConfig, logoConfig, enabled, fontPath, fontFamily, logoFormat],
+    [watermarkType, textConfig, logoConfig, exifConfig, enabled, fontPath, fontFamily, logoFormat],
     () => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(saveToStorage, 300);
@@ -115,6 +218,7 @@ export const useWatermarkStore = defineStore("watermark", () => {
     watermarkType,
     textConfig,
     logoConfig,
+    exifConfig,
     logoFormat,
     fontFamily,
     fontPath,

@@ -225,6 +225,8 @@ fn bench_text_watermark_single_tile() {
         pos_y: 0.5,
         opacity: 0.5,
         tile_spacing: 0.0,
+        stroke_color: [0, 0, 0],
+        stroke_width: 0.0,
     };
 
     let mut results = Vec::new();
@@ -265,6 +267,8 @@ fn bench_text_watermark_tiled() {
         pos_y: 0.5,
         opacity: 0.3,
         tile_spacing: 150.0,
+        stroke_color: [0, 0, 0],
+        stroke_width: 0.0,
     };
 
     let mut results = Vec::new();
@@ -284,6 +288,46 @@ fn bench_text_watermark_tiled() {
     }
 
     println!("\n━━━ Text Watermark (tiled, rotated) ━━━");
+    print_results(&results);
+}
+
+#[test]
+fn bench_text_watermark_with_stroke() {
+    let dir = test_images_dir();
+    if !dir.exists() {
+        eprintln!("Skipping: test/ directory not found");
+        return;
+    }
+
+    let font_data = arial_font();
+    let config = engine_text::TextWatermarkConfig {
+        text: "Watermark".into(),
+        font_size: 64.0,
+        color: [255, 255, 255, 220],
+        rotation: 0.0,
+        pos_x: 0.5,
+        pos_y: 0.5,
+        opacity: 0.8,
+        tile_spacing: 0.0,
+        stroke_color: [0, 0, 0],
+        stroke_width: 2.0,
+    };
+
+    let mut results = Vec::new();
+    for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+        let path = entry.path();
+        if !path.is_file() { continue; }
+        match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
+            Some("jpg" | "jpeg" | "png" | "bmp" | "webp") => {}
+            _ => continue,
+        }
+        match bench_single_image(&path, &config, &font_data) {
+            Ok(r) => results.push(r),
+            Err(e) => eprintln!("  SKIP {}: {e}", file_stem(&path)),
+        }
+    }
+
+    println!("\n━━━ Text Watermark (with 2px stroke) ━━━");
     print_results(&results);
 }
 
@@ -383,18 +427,20 @@ fn bench_full_suite() {
     }
     println!("\nFound {} test image(s)\n", image_paths.len());
 
-    // Scenario 1: single text watermark
+    // Scenario 1: single text watermark with stroke
     let config1 = engine_text::TextWatermarkConfig {
         text: "Watermark".into(),
         font_size: 64.0,
-        color: [255, 255, 255, 128],
+        color: [255, 255, 255, 200],
         rotation: 0.0,
         pos_x: 0.5,
         pos_y: 0.5,
-        opacity: 0.5,
+        opacity: 0.8,
         tile_spacing: 0.0,
+        stroke_color: [0, 0, 0],
+        stroke_width: 2.0,
     };
-    println!("━━━ Scenario 1: Single text watermark ━━━");
+    println!("━━━ Scenario 1: Text watermark with stroke ━━━");
     let mut results = Vec::new();
     for p in &image_paths {
         match bench_single_image(p, &config1, &font_data) {
@@ -414,6 +460,8 @@ fn bench_full_suite() {
         pos_y: 0.5,
         opacity: 0.3,
         tile_spacing: 150.0,
+        stroke_color: [0, 0, 0],
+        stroke_width: 0.0,
     };
     println!("\n━━━ Scenario 2: Tiled text watermark ━━━");
     let mut results = Vec::new();
@@ -455,6 +503,30 @@ fn bench_full_suite() {
     } else {
         println!("  Skipped — no PNG in test/ to use as logo");
     }
+
+    // Scenario 4: EXIF-style multiline text with stroke
+    println!("\n━━━ Scenario 4: EXIF-style multiline text ━━━");
+    let exif_text = "Canon EOS 70D\nEF 24-70mm f/2.8L\n200mm f/8.0 1/250s ISO 100";
+    let config4 = engine_text::TextWatermarkConfig {
+        text: exif_text.into(),
+        font_size: 36.0,
+        color: [255, 255, 255, 220],
+        rotation: 0.0,
+        pos_x: 0.02,
+        pos_y: 0.95,
+        opacity: 0.85,
+        tile_spacing: 0.0,
+        stroke_color: [0, 0, 0],
+        stroke_width: 2.0,
+    };
+    let mut results = Vec::new();
+    for p in &image_paths {
+        match bench_single_image(p, &config4, &font_data) {
+            Ok(r) => results.push(r),
+            Err(e) => eprintln!("  SKIP {}: {e}", file_stem(p)),
+        }
+    }
+    print_results(&results);
 
     println!("\n✓ Full benchmark suite complete");
 }

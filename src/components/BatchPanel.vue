@@ -9,7 +9,7 @@ import { renderOffscreen, type ExportFormat } from "@/composables/useCanvas";
 const batchStore = useBatchStore();
 const imageStore = useImageStore();
 const watermarkStore = useWatermarkStore();
-const { exportFile, loadImage: loadImageCmd, loadImageRaw } = useTauriCommands();
+const { exportFile, loadImage: loadImageCmd, loadImageRaw, readExif } = useTauriCommands();
 
 const expanded = ref(false);
 const outputDir = ref("");
@@ -85,7 +85,18 @@ async function startBatch() {
     try {
       const raw = await loadImageRaw(filePath);
       const sourceMime = `image/${raw.format || "jpeg"}`;
-      const base64 = await renderOffscreen(raw.base64, batchFormat.value, watermarkStore, sourceMime);
+
+      // Read EXIF data if watermark type is exif
+      let exif = null;
+      if (watermarkStore.watermarkType === "exif") {
+        try {
+          exif = await readExif(filePath);
+        } catch {
+          // EXIF is optional — proceed without it
+        }
+      }
+
+      const base64 = await renderOffscreen(raw.base64, batchFormat.value, watermarkStore, sourceMime, exif);
 
       const ext = batchFormat.value;
       const outPath = `${outputDir.value}/watermarked_${fileName.replace(/\.[^.]+$/, "")}.${ext}`;

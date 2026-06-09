@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
+import type { ExifFieldGroup } from "@/types";
 import { useImageStore } from "@/stores/image";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useBatchStore } from "@/stores/batch";
@@ -28,9 +29,125 @@ const exportFormat = ref<ExportFormat>("png");
 const logoError = ref("");
 const fontError = ref("");
 
+// ── Color helpers: convert between hex string (#rrggbb) and [r,g,b] tuple ──
+
+function rgbToHex(rgb: [number, number, number]): string {
+  return "#" + rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+  ];
+}
+
+// ── Text watermark color bindings ──
+
+const fillColorHex = computed({
+  get: () => rgbToHex(watermarkStore.textConfig.color.slice(0, 3) as [number, number, number]),
+  set: (hex: string) => {
+    const [r, g, b] = hexToRgb(hex);
+    watermarkStore.textConfig.color[0] = r;
+    watermarkStore.textConfig.color[1] = g;
+    watermarkStore.textConfig.color[2] = b;
+  },
+});
+
+const strokeColorHex = computed({
+  get: () => rgbToHex(watermarkStore.textConfig.stroke_color),
+  set: (hex: string) => {
+    const [r, g, b] = hexToRgb(hex);
+    watermarkStore.textConfig.stroke_color = [r, g, b];
+  },
+});
+
+// ── EXIF watermark color bindings ──
+
+const exifColorHex = computed({
+  get: () => rgbToHex(watermarkStore.exifConfig.color.slice(0, 3) as [number, number, number]),
+  set: (hex: string) => {
+    const [r, g, b] = hexToRgb(hex);
+    watermarkStore.exifConfig.color[0] = r;
+    watermarkStore.exifConfig.color[1] = g;
+    watermarkStore.exifConfig.color[2] = b;
+  },
+});
+
+const exifStrokeColorHex = computed({
+  get: () => rgbToHex(watermarkStore.exifConfig.stroke_color),
+  set: (hex: string) => {
+    const [r, g, b] = hexToRgb(hex);
+    watermarkStore.exifConfig.stroke_color = [r, g, b];
+  },
+});
+
+// ── EXIF field definitions ──
+
+const exifFieldDefs = [
+  { key: "camera_model" as const, label: "相机型号" },
+  { key: "lens_model" as const, label: "镜头" },
+  { key: "focal_length" as const, label: "焦距" },
+  { key: "aperture" as const, label: "光圈" },
+  { key: "shutter_speed" as const, label: "快门" },
+  { key: "iso" as const, label: "ISO" },
+  { key: "date_taken" as const, label: "拍摄日期" },
+  { key: "gps" as const, label: "GPS 位置" },
+];
+
+// ── Independent mode: per-field style panels ──
+
+const fieldStyleGroups: { key: ExifFieldGroup; label: string }[] = [
+  { key: "camera_model", label: "相机型号" },
+  { key: "lens_model", label: "镜头" },
+  { key: "date_taken", label: "拍摄日期" },
+  { key: "gps", label: "GPS 位置" },
+  { key: "inline", label: "参数行 (焦距/光圈/快门/ISO)" },
+];
+
+const expandedStylePanel = ref<string>("");
+
+function toggleStylePanel(key: string) {
+  expandedStylePanel.value = expandedStylePanel.value === key ? "" : key;
+}
+
+// Pre-generate color hex bindings for each field group
+function makeFieldColorHex(groupKey: ExifFieldGroup) {
+  return computed({
+    get: () => rgbToHex(
+      watermarkStore.exifConfig.field_styles[groupKey].color.slice(0, 3) as [number, number, number]
+    ),
+    set: (hex: string) => {
+      const [r, g, b] = hexToRgb(hex);
+      const c = watermarkStore.exifConfig.field_styles[groupKey].color;
+      c[0] = r; c[1] = g; c[2] = b;
+    },
+  });
+}
+
+function makeFieldStrokeColorHex(groupKey: ExifFieldGroup) {
+  return computed({
+    get: () => rgbToHex(watermarkStore.exifConfig.field_styles[groupKey].stroke_color),
+    set: (hex: string) => {
+      watermarkStore.exifConfig.field_styles[groupKey].stroke_color = hexToRgb(hex);
+    },
+  });
+}
+
+const fieldColorHexes: Record<string, ReturnType<typeof makeFieldColorHex>> = {};
+const fieldStrokeColorHexes: Record<string, ReturnType<typeof makeFieldStrokeColorHex>> = {};
+
+for (const g of fieldStyleGroups) {
+  fieldColorHexes[g.key] = makeFieldColorHex(g.key);
+  fieldStrokeColorHexes[g.key] = makeFieldStrokeColorHex(g.key);
+}
+
 const watermarkTypes = [
   { label: "文字水印", value: "text" as const },
   { label: "Logo 水印", value: "logo" as const },
+  { label: "EXIF 水印", value: "exif" as const },
 ];
 
 async function selectLogo() {
@@ -194,11 +311,37 @@ function addToBatch() {
         字体大小
         <input
           type="range"
-          min="12"
-          max="500"
+          min="0.5"
+          max="20"
+          step="0.1"
           v-model.number="watermarkStore.textConfig.font_size"
         />
-        <span class="range-val">{{ watermarkStore.textConfig.font_size }}px</span>
+        <span class="range-val">{{ watermarkStore.textConfig.font_size }}%</span>
+      </label>
+      <label class="color-label">
+        文字颜色
+        <div class="color-row">
+          <input type="color" v-model="fillColorHex" class="color-input" />
+          <span class="color-hex">{{ fillColorHex }}</span>
+        </div>
+      </label>
+      <label>
+        描边宽度
+        <input
+          type="range"
+          min="0"
+          max="20"
+          step="0.5"
+          v-model.number="watermarkStore.textConfig.stroke_width"
+        />
+        <span class="range-val">{{ watermarkStore.textConfig.stroke_width }}px</span>
+      </label>
+      <label v-if="watermarkStore.textConfig.stroke_width > 0" class="color-label">
+        描边颜色
+        <div class="color-row">
+          <input type="color" v-model="strokeColorHex" class="color-input" />
+          <span class="color-hex">{{ strokeColorHex }}</span>
+        </div>
       </label>
       <label>
         旋转角度
@@ -315,6 +458,232 @@ function addToBatch() {
       </label>
     </div>
 
+    <!-- EXIF watermark settings -->
+    <div v-if="watermarkStore.watermarkType === 'exif'" class="config-group">
+      <p v-if="!imageStore.exifData" class="hint-msg">
+        当前图片不含 EXIF 元数据，打开一张 JPEG 照片以使用此功能。
+      </p>
+
+      <div class="section-title">显示字段</div>
+      <div class="checkbox-grid">
+        <label
+          v-for="fd in exifFieldDefs"
+          :key="fd.key"
+          class="checkbox-label"
+        >
+          <input
+            type="checkbox"
+            v-model="watermarkStore.exifConfig.fields[fd.key]"
+          />
+          {{ fd.label }}
+        </label>
+      </div>
+
+      <div class="section-title">布局模式</div>
+      <div class="layout-tabs">
+        <label class="radio-label">
+          <input
+            type="radio"
+            value="unified"
+            v-model="watermarkStore.exifConfig.layout_mode"
+          />
+          统一布局
+        </label>
+        <label class="radio-label">
+          <input
+            type="radio"
+            value="independent"
+            v-model="watermarkStore.exifConfig.layout_mode"
+          />
+          独立布局
+        </label>
+      </div>
+
+      <label>
+        字体
+        <select class="font-select" @change="onFontSelect">
+          <option value="">Arial (系统默认)</option>
+          <option
+            v-for="f in watermarkStore.systemFonts"
+            :key="f.path"
+            :value="f.path"
+          >{{ f.name }}</option>
+          <option value="__browse__">手动选择字体文件...</option>
+        </select>
+        <span class="font-current">{{ watermarkStore.fontFamily }}</span>
+        <p v-if="fontError" class="error-msg">{{ fontError }}</p>
+      </label>
+      <label>
+        字体大小
+        <input
+          type="range"
+          min="0.5"
+          max="15"
+          step="0.1"
+          v-model.number="watermarkStore.exifConfig.font_size"
+        />
+        <span class="range-val">{{ watermarkStore.exifConfig.font_size }}%</span>
+      </label>
+      <label class="color-label">
+        文字颜色
+        <div class="color-row">
+          <input type="color" v-model="exifColorHex" class="color-input" />
+          <span class="color-hex">{{ exifColorHex }}</span>
+        </div>
+      </label>
+      <label>
+        描边宽度
+        <input
+          type="range"
+          min="0"
+          max="20"
+          step="0.5"
+          v-model.number="watermarkStore.exifConfig.stroke_width"
+        />
+        <span class="range-val">{{ watermarkStore.exifConfig.stroke_width }}px</span>
+      </label>
+      <label v-if="watermarkStore.exifConfig.stroke_width > 0" class="color-label">
+        描边颜色
+        <div class="color-row">
+          <input type="color" v-model="exifStrokeColorHex" class="color-input" />
+          <span class="color-hex">{{ exifStrokeColorHex }}</span>
+        </div>
+      </label>
+      <label>
+        旋转角度
+        <input
+          type="range"
+          min="0"
+          max="360"
+          step="1"
+          v-model.number="watermarkStore.exifConfig.rotation"
+        />
+        <span class="range-val">{{ watermarkStore.exifConfig.rotation }}°</span>
+      </label>
+      <label>
+        透明度
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          v-model.number="watermarkStore.exifConfig.opacity"
+        />
+        <span class="range-val">{{ Math.round(watermarkStore.exifConfig.opacity * 100) }}%</span>
+      </label>
+
+      <!-- Position controls — unified mode only -->
+      <template v-if="watermarkStore.exifConfig.layout_mode === 'unified'">
+        <label>
+          水平位置
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            v-model.number="watermarkStore.exifConfig.pos_x"
+          />
+        </label>
+        <label>
+          垂直位置
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            v-model.number="watermarkStore.exifConfig.pos_y"
+          />
+        </label>
+        <label>
+          平铺间距 (0=不平铺)
+          <input
+            type="range"
+            min="0"
+            max="400"
+            step="10"
+            v-model.number="watermarkStore.exifConfig.tile_spacing"
+          />
+          <span class="range-val">{{ watermarkStore.exifConfig.tile_spacing }}px</span>
+        </label>
+      </template>
+
+      <!-- Independent mode: per-field style panels -->
+      <div v-else class="field-styles-section">
+        <div
+          v-for="g in fieldStyleGroups"
+          :key="g.key"
+          class="field-style-panel"
+        >
+          <div class="field-style-header" @click="toggleStylePanel(g.key)">
+            <span class="arrow">{{ expandedStylePanel === g.key ? '▼' : '▶' }}</span>
+            <span>{{ g.label }}</span>
+          </div>
+          <div v-if="expandedStylePanel === g.key" class="field-style-body">
+            <label>
+              水平位置
+              <input
+                type="range" min="0" max="1" step="0.01"
+                v-model.number="watermarkStore.exifConfig.field_styles[g.key].pos_x"
+              />
+            </label>
+            <label>
+              垂直位置
+              <input
+                type="range" min="0" max="1" step="0.01"
+                v-model.number="watermarkStore.exifConfig.field_styles[g.key].pos_y"
+              />
+            </label>
+            <label>
+              字体大小
+              <input
+                type="range" min="0.5" max="15" step="0.1"
+                v-model.number="watermarkStore.exifConfig.field_styles[g.key].font_size"
+              />
+              <span class="range-val">{{ watermarkStore.exifConfig.field_styles[g.key].font_size }}%</span>
+            </label>
+            <label class="color-label">
+              文字颜色
+              <div class="color-row">
+                <input type="color" v-model="fieldColorHexes[g.key]" class="color-input" />
+                <span class="color-hex">{{ fieldColorHexes[g.key] }}</span>
+              </div>
+            </label>
+            <label>
+              透明度
+              <input
+                type="range" min="0" max="1" step="0.05"
+                v-model.number="watermarkStore.exifConfig.field_styles[g.key].opacity"
+              />
+              <span class="range-val">{{ Math.round(watermarkStore.exifConfig.field_styles[g.key].opacity * 100) }}%</span>
+            </label>
+            <label>
+              描边宽度
+              <input
+                type="range" min="0" max="20" step="0.5"
+                v-model.number="watermarkStore.exifConfig.field_styles[g.key].stroke_width"
+              />
+              <span class="range-val">{{ watermarkStore.exifConfig.field_styles[g.key].stroke_width }}px</span>
+            </label>
+            <label v-if="watermarkStore.exifConfig.field_styles[g.key].stroke_width > 0" class="color-label">
+              描边颜色
+              <div class="color-row">
+                <input type="color" v-model="fieldStrokeColorHexes[g.key]" class="color-input" />
+                <span class="color-hex">{{ fieldStrokeColorHexes[g.key] }}</span>
+              </div>
+            </label>
+            <label>
+              旋转角度
+              <input
+                type="range" min="0" max="360" step="1"
+                v-model.number="watermarkStore.exifConfig.field_styles[g.key].rotation"
+              />
+              <span class="range-val">{{ watermarkStore.exifConfig.field_styles[g.key].rotation }}°</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Export -->
     <div class="export-section">
       <h4>导出</h4>
@@ -347,7 +716,9 @@ function addToBatch() {
   min-width: 220px;
   padding: 12px;
   border-left: 1px solid #333;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .type-tabs {
@@ -386,6 +757,9 @@ function addToBatch() {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .config-group label {
@@ -466,13 +840,145 @@ input[type="range"] {
   font-size: 12px;
 }
 
+/* ── Color picker styles ── */
+
+.color-label {
+  flex-direction: column;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.color-input {
+  width: 32px;
+  height: 28px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 1px;
+  background: #1e1e1e;
+  cursor: pointer;
+}
+
+.color-hex {
+  font-size: 12px;
+  color: #888;
+  font-family: monospace;
+}
+
+/* ── EXIF field checkboxes ── */
+
+.section-title {
+  font-size: 13px;
+  color: #aaa;
+  font-weight: 600;
+  padding-top: 4px;
+  border-top: 1px solid #2a2a2a;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #ccc;
+  cursor: pointer;
+  flex-direction: row !important;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: #4a9;
+  width: auto;
+}
+
+/* ── Layout mode radio ── */
+
+.layout-tabs {
+  display: flex;
+  gap: 16px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #ccc;
+}
+
+.hint-msg {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+  margin: 0;
+}
+
+/* ── Per-field style panels (independent mode) ── */
+
+.field-styles-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.field-style-panel {
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.field-style-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: #1a1a1a;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ccc;
+  user-select: none;
+}
+
+.field-style-header:hover {
+  background: #222;
+}
+
+.field-style-header .arrow {
+  font-size: 10px;
+  width: 12px;
+  text-align: center;
+  color: #888;
+}
+
+.field-style-body {
+  padding: 4px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #141414;
+}
+
+/* ── Export section ── */
+
 .export-section {
-  margin-top: 20px;
-  padding-top: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid #333;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .export-section h4 {
@@ -484,14 +990,5 @@ input[type="range"] {
   display: flex;
   gap: 16px;
   margin-bottom: 4px;
-}
-
-.radio-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  color: #ccc;
 }
 </style>

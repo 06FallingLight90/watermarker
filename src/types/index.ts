@@ -38,6 +38,8 @@ export interface TextWatermarkConfig {
   pos_y: number;
   opacity: number;
   tile_spacing: number;
+  stroke_color: [number, number, number];
+  stroke_width: number;
 }
 
 export interface LogoWatermarkConfig {
@@ -47,6 +49,48 @@ export interface LogoWatermarkConfig {
   pos_x: number;
   pos_y: number;
   rotation: number;
+}
+
+/** Visibility toggles for EXIF metadata fields shown in watermark */
+export interface ExifFieldVisibility {
+  camera_model: boolean;
+  lens_model: boolean;
+  focal_length: boolean;
+  aperture: boolean;
+  shutter_speed: boolean;
+  iso: boolean;
+  date_taken: boolean;
+  gps: boolean;
+}
+
+/** Per-field style settings used in independent layout mode */
+export interface ExifFieldStyle {
+  font_size: number;
+  color: [number, number, number, number];
+  opacity: number;
+  stroke_color: [number, number, number];
+  stroke_width: number;
+  pos_x: number;
+  pos_y: number;
+  rotation: number;
+}
+
+/** Keys identifying EXIF field groups for per-field styling */
+export type ExifFieldGroup = "camera_model" | "lens_model" | "date_taken" | "gps" | "inline";
+
+export interface ExifWatermarkConfig {
+  font_size: number;
+  color: [number, number, number, number];
+  rotation: number;
+  pos_x: number;
+  pos_y: number;
+  opacity: number;
+  tile_spacing: number;
+  stroke_color: [number, number, number];
+  stroke_width: number;
+  layout_mode: "unified" | "independent";
+  fields: ExifFieldVisibility;
+  field_styles: Record<ExifFieldGroup, ExifFieldStyle>;
 }
 
 export interface WatermarkResult {
@@ -64,7 +108,7 @@ export interface BatchProgress {
 }
 
 export interface BatchConfig {
-  watermark_type: "text" | "logo";
+  watermark_type: "text" | "logo" | "exif";
   text_config: TextWatermarkConfig | null;
   logo_config: LogoWatermarkConfig | null;
   font_path: string | null;
@@ -76,4 +120,4 @@ export interface FontEntry {
   name: string;
 }
 
-export type WatermarkType = "text" | "logo";
+export type WatermarkType = "text" | "logo" | "exif";

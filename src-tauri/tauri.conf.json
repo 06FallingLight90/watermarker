@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicerpc/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "Watermarker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.watermarker.app",
   "build": {
     "beforeDevCommand": "npm run dev",

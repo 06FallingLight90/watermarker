@@ -1,6 +1,6 @@
 [package]
 name = "watermarker"
-version = "0.2.0"
+version = "0.3.0"
 description = "A lightweight image watermark editor"
 authors = ["watermarker"]
 edition = "2021"
