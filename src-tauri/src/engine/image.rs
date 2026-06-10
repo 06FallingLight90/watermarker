@@ -1,6 +1,8 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use exif::{Reader as ExifReader, Tag as ExifTag};
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
+use image::imageops;
 use image::ImageEncoder;
 use std::io::Cursor;
 use std::path::Path;
@@ -24,7 +26,13 @@ pub struct ImageInfo {
 impl ImageInfo {
     pub fn from_file(path: &str, quality: u8) -> Result<Self, String> {
         let path = Path::new(path);
-        let img = image::open(path).map_err(|e| format!("Failed to open image: {e}"))?;
+        let mut img = image::open(path).map_err(|e| format!("Failed to open image: {e}"))?;
+
+        // Read EXIF Orientation tag and apply the transform.
+        // Digital cameras always store raw pixels in landscape orientation;
+        // without this, portrait photos appear rotated 90° in the preview.
+        let orientation = read_orientation(path);
+        apply_orientation(&mut img, orientation);
 
         let (width, height) = (img.width(), img.height());
         let format = detect_format(path);
@@ -51,6 +59,50 @@ impl ImageInfo {
             base64,
         })
     }
+}
+
+/// Read EXIF Orientation tag from the given file.
+/// Returns the orientation value (1–8), defaulting to 1 (normal) if not found.
+fn read_orientation(path: &Path) -> u32 {
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return 1,
+    };
+    let mut reader = std::io::BufReader::new(&file);
+    let exif = match ExifReader::new().read_from_container(&mut reader) {
+        Ok(e) => e,
+        Err(_) => return 1,
+    };
+    for field in exif.fields() {
+        if field.tag == ExifTag::Orientation {
+            if let Some(v) = field.value.get_uint(0) {
+                return v as u32;
+            }
+            break;
+        }
+    }
+    1
+}
+
+/// Apply the EXIF orientation transform to a DynamicImage.
+/// See: <https://exiftool.org/TagNames/EXIF.html> (Orientation tag)
+fn apply_orientation(img: &mut image::DynamicImage, orientation: u32) {
+    *img = match orientation {
+        2 => image::DynamicImage::ImageRgba8(imageops::flip_horizontal(img)),   // Mirror horizontal
+        3 => image::DynamicImage::ImageRgba8(imageops::rotate180(img)),          // Rotate 180°
+        4 => image::DynamicImage::ImageRgba8(imageops::flip_vertical(img)),     // Mirror vertical
+        5 => {                                                                    // Rotate 90° CW + mirror horizontal
+            let rotated = imageops::rotate90(img);
+            image::DynamicImage::ImageRgba8(imageops::flip_horizontal(&rotated))
+        }
+        6 => image::DynamicImage::ImageRgba8(imageops::rotate90(img)),           // Rotate 90° CW (portrait)
+        7 => {                                                                    // Rotate 90° CW + mirror vertical
+            let rotated = imageops::rotate90(img);
+            image::DynamicImage::ImageRgba8(imageops::flip_vertical(&rotated))
+        }
+        8 => image::DynamicImage::ImageRgba8(imageops::rotate270(img)),          // Rotate 270° CW (90° CCW)
+        _ => return, // 1 or unknown — keep as-is
+    };
 }
 
 /// Read raw file bytes and base64-encode them without any image re-encoding.
