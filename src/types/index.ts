@@ -91,6 +91,10 @@ export interface ExifWatermarkConfig {
   layout_mode: "unified" | "independent";
   fields: ExifFieldVisibility;
   field_styles: Record<ExifFieldGroup, ExifFieldStyle>;
+  /** Replace camera_model text with manufacturer trade mark logo (Canon/Nikon/Sony) */
+  trade_mark_enabled: boolean;
+  /** Trade mark logo size as percentage of photo width (1–100) */
+  trade_mark_scale: number;
 }
 
 export interface WatermarkResult {
@@ -105,6 +109,24 @@ export interface BatchProgress {
   file_name: string;
   status: "processing" | "done" | "error";
   error: string | null;
+}
+
+/** Complete watermark configuration snapshot for a single batch file */
+export interface BatchWatermarkConfig {
+  watermarkType: WatermarkType;
+  textConfig: TextWatermarkConfig;
+  logoConfig: LogoWatermarkConfig;
+  exifConfig: ExifWatermarkConfig;
+  logoFormat: string;
+  fontFamily: string;
+  fontPath: string;
+  enabled: boolean;
+}
+
+/** A single entry in the batch processing queue */
+export interface BatchFileEntry {
+  path: string;
+  config: BatchWatermarkConfig;
 }
 
 export interface BatchConfig {

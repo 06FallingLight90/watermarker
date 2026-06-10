@@ -30,25 +30,60 @@ Frontend dev server runs on `http://localhost:1420`. Rust changes auto-recompile
 ### Layout (App.vue)
 - **LeftPanel** — File open, EXIF display
 - **CenterCanvas** — Live Canvas preview, provides `renderPreview` via `provide/inject`
-- **RightPanel** — Watermark settings (text/logo), single export
+- **RightPanel** — Watermark type tabs + enable toggle; delegates to sub-panels
+  - `watermark/TextWatermarkPanel.vue` — Text watermark config form
+  - `watermark/LogoWatermarkPanel.vue` — Logo watermark config form
+  - `watermark/ExifWatermarkPanel.vue` — EXIF watermark config form (field toggles, layout mode)
+  - `watermark/ExifFieldStylePanel.vue` — Collapsible per-field style panel (independent mode)
+  - `export/ExportSection.vue` — Format selection + single export button
 - **BatchPanel** — Batch file queue and processing
+
+### Frontend Source Structure
+```
+src/
+├── components/
+│   ├── watermark/          # Watermark-type-specific config panels
+│   ├── export/             # Export-related components
+│   ├── App.vue             # Root layout
+│   ├── LeftPanel.vue       # Image open + EXIF display
+│   ├── CenterCanvas.vue    # Canvas preview
+│   ├── RightPanel.vue      # Settings container (type tabs + sub-panels)
+│   └── BatchPanel.vue      # Batch processing
+├── composables/
+│   ├── useCanvas.ts        # Composable: canvas preview + reactivity
+│   ├── useWatermarkDrawing.ts  # Pure drawing functions (text/logo/EXIF on Canvas)
+│   ├── useFontLoader.ts    # System font scanning + custom font loading
+│   └── useTauriCommands.ts # Typed wrappers for Tauri invoke()
+├── stores/                 # Pinia stores (image, watermark, batch)
+├── types/index.ts          # TypeScript interfaces
+├── utils/
+│   ├── colorConvert.ts     # rgbToHex / hexToRgb helpers
+│   └── tradeMarks.ts       # Camera brand trade mark image preloading & matching
+├── assets/
+│   └── trade_marks/        # Canon / Nikon / Sony logo PNGs
+└── styles/
+    └── shared.css          # Shared form/control styles
+```
 
 ### Rendering Pipeline (critical design decision)
 
 **Preview and export share the same Canvas drawing code.** This ensures WYSIWYG.
 
 1. `useCanvas.ts` `renderPreview()` — draws to the visible canvas at container-scale
-2. `useCanvas.ts` `renderFullRes()` — draws to an offscreen canvas at scale=1.0 for single-image export
-3. `useCanvas.ts` `renderOffscreen()` — same as above but takes arbitrary base64 input, used by batch processing
-4. All three call the shared `renderWatermarkStatic()` → `drawTextWatermarkStatic()` / `drawLogoWatermarkStatic()`
-5. Exported base64 goes to Rust `export_file` which just writes raw bytes to disk
+2. `useWatermarkDrawing.ts` `renderFullRes()` — draws to an offscreen canvas at scale=1.0 for single-image export
+3. `useWatermarkDrawing.ts` `renderOffscreen()` — same as above but takes arbitrary base64 input, used by batch processing
+4. `useWatermarkDrawing.ts` `renderOffscreenWithConfig()` — renders with a `BatchWatermarkConfig` snapshot (batch per-image config)
+5. All call the shared `renderWatermarkStatic()` → `renderWatermarkFromConfig()` → `drawTextWatermarkStatic()` / `drawLogoWatermarkStatic()` / `drawExifWatermarkStatic()`
+6. `drawExifWatermarkStatic()` accepts an optional trade mark `HTMLImageElement` for replacing camera-model text with manufacturer logo
+7. `useCanvas.ts` re-exports `renderFullRes` / `renderOffscreen` / `renderOffscreenWithConfig` / `loadImageFromBase64` for backward compatibility
+8. Exported base64 goes to Rust `export_file` which just writes raw bytes to disk
 
 The Rust `commands/watermark.rs` and `commands/batch.rs` (using engine/text.rs and engine/overlay.rs) exist as a **fallback/alternative rendering path**. The app currently uses the frontend Canvas path exclusively.
 
 ### Pinia Stores
 - `imageStore` — `currentImage`, `exifData`, `filePath`, `renderedBase64`
 - `watermarkStore` — `watermarkType`, `textConfig`, `logoConfig`, `logoFormat`, `fontFamily`, `fontPath`, `systemFonts`, `fontsLoaded`, `enabled`
-- `batchStore` — `files`, `progressList`, `isProcessing`
+- `batchStore` — `entries` (file path + per-image config), `activeIndex`, `progressList`, `isProcessing`
 
 Reactivity: `CenterCanvas` deep-watches `watermarkStore.$state` — any config change triggers `renderPreview()`.
 

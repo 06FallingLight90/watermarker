@@ -1,5 +1,42 @@
 # 更新日志
 
+## v0.4.0 (2026-06)
+
+### 新增
+
+- **EXIF 商标 Logo 替换**：若相机为 Canon / Nikon / Sony，可将 EXIF 水印中的相机型号文本替换为厂商商标图片
+  - `src/assets/trade_marks/` 内置三家厂商的 PNG 商标（Canon、Nikon、Sony）
+  - 新增 `src/utils/tradeMarks.ts`：预加载商标图片，根据 `camera_make` 匹配品牌
+  - `ExifWatermarkConfig` 新增 `trade_mark_enabled`（开关）和 `trade_mark_scale`（图片大小，照片宽度百分比）
+  - 支持统一布局和独立布局两种模式，商标图片支持旋转、透明度、平铺（平铺模式下商标图片同样可平铺）
+  - 当前图片的品牌不在支持列表中时显示提示信息
+- **批处理队列独立水印配置**：队列中每张图片可拥有独立的水印设置
+  - 队列文件列表支持点击切换预览：点击文件名即可将该图片加载到主预览区域，当前水印配置自动保存到切换前的文件
+  - 添加文件到队列时，所有文件默认继承当前水印配置的快照
+  - 每张图片的水印配置独立存储（`BatchWatermarkConfig`），可单独修改并在导出时各自应用
+  - 通过 LeftPanel 打开的独立图片会解除批处理队列的激活状态
+  - 批处理导出时自动保存当前激活文件的配置，每张图片使用各自的独立水印配置渲染
+- **新增类型**：`BatchWatermarkConfig`（完整水印配置快照）、`BatchFileEntry`（文件路径 + 独立配置）
+- **新增渲染函数**：`renderWatermarkFromConfig()` / `renderOffscreenWithConfig()` — 基于配置快照的渲染，无需依赖 Pinia Store，支持批量导出时各文件使用独立配置
+- **watermarkStore 新增方法**：`snapshotConfig()` 导出当前配置快照，`loadSnapshot()` 加载配置快照（加载时跳过 localStorage 持久化）
+- **位置滑块数值显示**：所有水印位置滑块（水平/垂直）均显示百分比数值，便于精准控制
+
+### 重构
+
+- **RightPanel.vue 拆分**：994 行单体组件拆分为 6 个子组件：
+  - `RightPanel.vue`（101 行）— 轻量容器，负责水印类型切换和启停
+  - `TextWatermarkPanel.vue`（141 行）— 文字水印设置
+  - `LogoWatermarkPanel.vue`（91 行）— Logo 水印设置
+  - `ExifWatermarkPanel.vue`（214 行）— EXIF 水印设置
+  - `ExifFieldStylePanel.vue`（137 行）— EXIF 独立布局字段样式面板
+  - `ExportSection.vue`（102 行）— 导出区域
+- **useCanvas.ts 拆分**（398 行 → 65 行）：纯绘制函数提取到 `useWatermarkDrawing.ts`（353 行），原文件仅保留 composable 并重新导出
+- **新增工具/组合式函数**：
+  - `utils/colorConvert.ts`（14 行）— `rgbToHex` / `hexToRgb` 颜色转换
+  - `utils/tradeMarks.ts` — 商标图片预加载与品牌匹配
+  - `composables/useFontLoader.ts`（86 行）— 字体加载逻辑（系统字体扫描 + FontFace API 注册）
+- **全局样式提取**：`styles/shared.css`（171 行）— 各面板共用的表单/控件样式集中管理
+
 ## v0.3.0 (2026-06)
 
 ### 变更

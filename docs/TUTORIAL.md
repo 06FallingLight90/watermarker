@@ -210,7 +210,12 @@ Watermarker 的组件树：
 App.vue                              ← 根组件，定义整体布局
 ├── LeftPanel.vue                    ← 左侧：文件选择 + EXIF
 ├── CenterCanvas.vue                 ← 中间：Canvas 预览
-├── RightPanel.vue                   ← 右侧：水印设置 + 导出
+├── RightPanel.vue                   ← 右侧：水印设置容器
+│   ├── TextWatermarkPanel.vue       ←   文字水印面板
+│   ├── LogoWatermarkPanel.vue       ←   Logo 水印面板
+│   ├── ExifWatermarkPanel.vue       ←   EXIF 水印面板
+│   │   └── ExifFieldStylePanel.vue  ←   EXIF 独立布局字段样式
+│   └── ExportSection.vue            ←   导出区域
 └── BatchPanel.vue                   ← 底部：批处理
 ```
 
@@ -344,11 +349,12 @@ export const useWatermarkStore = defineStore("watermark", () => {
 
 ```typescript
 export const useBatchStore = defineStore("batch", () => {
-  const files = ref<string[]>([]);               // 待处理的文件路径列表
+  const entries = ref<BatchFileEntry[]>([]);      // 文件路径 + 各自的水印配置
   const progressList = ref<BatchProgress[]>([]);  // 每个文件的处理进度
   const isProcessing = ref(false);                // 是否正在处理
+  const activeIndex = ref<number | null>(null);   // 当前预览的批处理文件索引
 
-  const totalFiles = computed(() => files.value.length);
+  const totalFiles = computed(() => entries.value.length);
   const completedFiles = computed(
     () => progressList.value.filter(p => p.status === "done").length
   );
@@ -392,29 +398,36 @@ ctx.font = "48px Arial";
 ctx.fillText("Hello", 100, 200);
 ```
 
-Watermarker 的所有**水印绘制逻辑**都通过 Canvas 实现，这是整个项目最核心的文件。
+Watermarker 的所有**水印绘制逻辑**都通过 Canvas 实现，分布在两个核心文件中：
 
-> 核心文件：[src/composables/useCanvas.ts](../src/composables/useCanvas.ts)
+> 核心文件：[src/composables/useCanvas.ts](../src/composables/useCanvas.ts)（composable + 重新导出）和 [src/composables/useWatermarkDrawing.ts](../src/composables/useWatermarkDrawing.ts)（纯绘制函数）
 
 ### 4.2 文件结构解析
 
-这个文件有三个层次：
+这两个文件的分工：
 
 ```
-useCanvas.ts
+useWatermarkDrawing.ts (纯绘制函数，无 Vue 依赖)
 │
 ├── 模块级导出函数（可以被任何文件导入）
-│   ├── renderFullRes(format)       — 单张全分辨率导出
-│   ├── renderOffscreen(base64)     — 批处理离屏渲染
-│   └── loadImageFromBase64(base64) — base64 → Image 元素
+│   ├── renderFullRes(format)            — 单张全分辨率导出
+│   ├── renderOffscreen(base64)          — 批处理离屏渲染
+│   ├── renderOffscreenWithConfig(...)   — 基于配置快照的离屏渲染（批处理独立配置）
+│   ├── renderWatermarkFromConfig(...)   — 基于配置快照的水印绘制（不依赖Store）
+│   └── loadImageFromBase64(base64)      — base64 → Image 元素
 │
-├── 内部绘制函数（只在文件内使用）
+├── 水印绘制函数
 │   ├── renderWatermarkStatic()     — 水印分发器
 │   ├── drawTextWatermarkStatic()   — 文字水印
-│   └── drawLogoWatermarkStatic()   — Logo 水印
+│   ├── drawLogoWatermarkStatic()   — Logo 水印
+│   ├── drawExifWatermarkStatic()   — EXIF 水印
+│   │   └── 支持商标Logo替换相机型号 (Canon/Nikon/Sony)
+│   └── buildExifTexts()           — EXIF 文本构建辅助
 │
-└── Composable（供组件使用）
-    └── useCanvas()                 — 预览渲染 + 响应式监听
+useCanvas.ts (Vue composable)
+│
+├── 重新导出上面所有函数（向后兼容）
+└── useCanvas()                     — 预览渲染 + 响应式监听
 ```
 
 ### 4.3 核心函数详解
@@ -570,19 +583,19 @@ export function useCanvas() {
 这是 Watermarker 最巧妙的设计：
 
 ```
-预览：renderPreview()
+预览：renderPreview()           [useCanvas.ts composable]
   scale = 容器宽度 / 原图宽度（如 0.3）
   Canvas 尺寸：缩小后的
   水印也按 scale 缩小
 
-导出：renderFullRes()
+导出：renderFullRes()           [useWatermarkDrawing.ts 模块函数]
   scale = 1.0（原始大小）
   Canvas 尺寸：原图尺寸
   水印也按 1.0 绘制
 
          ┌──────────────────────────────┐
          │   renderWatermarkStatic()     │  ← 同一个绘制函数
-         │   (文字/Logo 水印共享入口)      │
+         │   (位于 useWatermarkDrawing)   │
          └──────────────────────────────┘
                 ↑              ↑
         scale=0.3        scale=1.0
@@ -591,7 +604,7 @@ export function useCanvas() {
           (屏幕预览)        (文件导出)
 ```
 
-> **小练习**：在 `useCanvas.ts` 中搜索 `renderFullRes`，理解它和 `renderPreview` 的三个区别。
+> **小练习**：在 `useWatermarkDrawing.ts` 中搜索 `renderFullRes`，理解它和 `renderPreview`（在 `useCanvas.ts` 中）的三个区别。
 
 ---
 
@@ -867,35 +880,35 @@ pub fn export_file(base64: String, output_path: String) -> Result<(), String> {
 ### 时间线
 
 ```
-时间  │  位置                │  操作
-──────┼──────────────────────┼─────────────────────────────────────
-  1   │ 用户                 │ 点击 "导出单张图片" 按钮
-  2   │ RightPanel.vue:41   │ handleExport() 被调用
-  3   │ RightPanel.vue:49   │ 弹出保存对话框，用户选择路径
-  4   │ RightPanel.vue:63   │ 调用 renderFullRes(exportFormat)
-──────┼──────────────────────┼─────────────────────────────────────
-  5   │ useCanvas.ts:15     │ 进入 renderFullRes 函数
-  6   │ useCanvas.ts:21     │ 等待 loadImageFromBase64 → HTMLImageElement
-  7   │ useCanvas.ts:25-28  │ 创建离屏 Canvas（原图大小）
-  8   │ useCanvas.ts:30     │ ctx.drawImage(原图, 0, 0)
-  9   │ useCanvas.ts:31     │ renderWatermarkStatic(ctx, canvas, 1.0, store)
- 10   │ useCanvas.ts:80-91  │ 判断水印类型，进入对应绘制函数
- 11   │ useCanvas.ts:93-127 │ drawTextWatermarkStatic() 或
-      │ useCanvas.ts:129-146│ drawLogoWatermarkStatic()
- 12   │ useCanvas.ts:34-35  │ canvas.toDataURL("image/png") → base64
- 13   │ useCanvas.ts:35     │ 返回 base64 字符串
-──────┼──────────────────────┼─────────────────────────────────────
- 14   │ RightPanel.vue:64   │ 调用 exportFile(base64, savePath)
-──────┼──────────────────────┼─────────────────────────────────────
- 15   │ useTauriCommands:57 │ invoke("export_file", ...)
- 16   │ (IPC 通信)           │ 序列化参数 → Rust 进程
-──────┼──────────────────────┼─────────────────────────────────────
- 17   │ commands/image.rs:22│ export_file() 收到参数
- 18   │ commands/image.rs:23│ base64 解码为字节
- 19   │ commands/image.rs:26│ std::fs::write(path, bytes)
- 20   │                     │ 文件写入磁盘 ✓
-──────┼──────────────────────┼─────────────────────────────────────
- 21   │ RightPanel.vue:66   │ alert("导出成功")
+时间  │  位置                      │  操作
+──────┼────────────────────────────┼─────────────────────────────────────
+  1   │ 用户                       │ 点击 "导出单张图片" 按钮
+  2   │ ExportSection.vue          │ handleExport() 被调用
+  3   │ ExportSection.vue          │ 弹出保存对话框，用户选择路径
+  4   │ ExportSection.vue          │ 调用 renderFullRes(exportFormat)
+──────┼────────────────────────────┼─────────────────────────────────────
+  5   │ useWatermarkDrawing.ts     │ 进入 renderFullRes 函数
+  6   │ useWatermarkDrawing.ts     │ 等待 loadImageFromBase64 → HTMLImageElement
+  7   │ useWatermarkDrawing.ts     │ 创建离屏 Canvas（原图大小）
+  8   │ useWatermarkDrawing.ts     │ ctx.drawImage(原图, 0, 0)
+  9   │ useWatermarkDrawing.ts     │ renderWatermarkStatic(ctx, canvas, 1.0, store)
+ 10   │ useWatermarkDrawing.ts     │ 判断水印类型，进入对应绘制函数
+ 11   │ useWatermarkDrawing.ts     │ drawTextWatermarkStatic() / drawLogo... / drawExif...
+     │                            │ (exif模式: 调用 getTradeMarkImage 查找商标Logo)
+ 12   │ useWatermarkDrawing.ts     │ canvas.toDataURL("image/png") → base64
+ 13   │ useWatermarkDrawing.ts     │ 返回 base64 字符串
+──────┼────────────────────────────┼─────────────────────────────────────
+ 14   │ ExportSection.vue          │ 调用 exportFile(base64, savePath)
+──────┼────────────────────────────┼─────────────────────────────────────
+ 15   │ useTauriCommands.ts        │ invoke("export_file", ...)
+ 16   │ (IPC 通信)                  │ 序列化参数 → Rust 进程
+──────┼────────────────────────────┼─────────────────────────────────────
+ 17   │ commands/image.rs          │ export_file() 收到参数
+ 18   │ commands/image.rs          │ base64 解码为字节
+ 19   │ commands/image.rs          │ std::fs::write(path, bytes)
+ 20   │                            │ 文件写入磁盘 ✓
+──────┼────────────────────────────┼─────────────────────────────────────
+ 21   │ ExportSection.vue          │ alert("导出成功")
 ```
 
 ### 图解数据流
@@ -904,14 +917,14 @@ pub fn export_file(base64: String, output_path: String) -> Result<(), String> {
                  用户点击 "导出"
                        │
         ┌──────────────┴──────────────┐
-        │   RightPanel.vue             │
+        │   ExportSection.vue          │
         │   handleExport()             │
         │   1. 弹出保存对话框            │
         │   2. 调用 renderFullRes()     │
         └──────────────┬──────────────┘
                        │
         ┌──────────────▼──────────────┐
-        │   useCanvas.ts               │
+        │   useWatermarkDrawing.ts     │
         │   renderFullRes()            │
         │   1. 从 imageStore 取原图     │
         │   2. 创建离屏 Canvas (原图大小)│
@@ -936,10 +949,10 @@ pub fn export_file(base64: String, output_path: String) -> Result<(), String> {
 
 ### 批处理的差异
 
-批处理在 [BatchPanel.vue](../src/components/BatchPanel.vue#L47) 中循环调用 `renderOffscreen()`，与单张导出相比：
+批处理在 [BatchPanel.vue](../src/components/BatchPanel.vue) 中循环调用 `renderOffscreenWithConfig()`（使用每张图片独立的 `BatchWatermarkConfig`），与单张导出相比：
 
-- **相同点**：都创建离屏 Canvas，都调用 `renderWatermarkStatic()`
-- **不同点**：批处理跳过对话框（输出目录预先选定），逐文件串行处理并更新进度
+- **相同点**：都创建离屏 Canvas，都调用 `renderWatermarkFromConfig()`
+- **不同点**：批处理跳过对话框（输出目录预先选定）；每张图片可使用各自的独立水印配置（点击队列中的文件名即可切换预览并单独修改）
 
 ---
 
@@ -1040,9 +1053,16 @@ GitHub Actions 配置文件：[.github/workflows/build.yml](../.github/workflows
 | `src/composables/useTauriCommands.ts` | ⭐⭐ | Tauri 命令封装 | 理解前后端通信 |
 | `src/components/LeftPanel.vue` | ⭐⭐ | 左面板组件 | 理解组件如何使用 Store |
 | `src/components/CenterCanvas.vue` | ⭐⭐ | Canvas 组件 | 理解 provide/inject 和 ref 绑定 |
-| `src/components/RightPanel.vue` | ⭐⭐⭐ | 右面板组件 | 完整的交互流程 |
+| `src/components/RightPanel.vue` | ⭐⭐⭐ | 右面板容器 | 水印类型切换 + 子面板组合 |
+| `src/components/watermark/TextWatermarkPanel.vue` | ⭐⭐⭐ | 文字水印面板 | 表单控件 + 颜色绑定 |
+| `src/components/watermark/ExifWatermarkPanel.vue` | ⭐⭐⭐ | EXIF 水印面板 | 复杂条件渲染 + 布局模式 |
+| `src/components/export/ExportSection.vue` | ⭐⭐⭐ | 导出区域 | 完整导出交互流程 |
 | `src/components/BatchPanel.vue` | ⭐⭐⭐ | 批处理面板 | 理解循环异步处理 |
-| `src/composables/useCanvas.ts` | ⭐⭐⭐⭐ | **核心！** Canvas 渲染 | 理解预览/导出统一逻辑 |
+| `src/composables/useWatermarkDrawing.ts` | ⭐⭐⭐⭐ | **核心！** 纯绘制函数 | 理解预览/导出统一逻辑 |
+| `src/composables/useCanvas.ts` | ⭐⭐⭐ | Canvas composable | 理解 Vue 响应式 + 绘制桥接 |
+| `src/composables/useFontLoader.ts` | ⭐⭐ | 字体加载 | FontFace API + 系统字体扫描 |
+| `src/utils/colorConvert.ts` | ⭐ | 颜色转换工具 | rgb/hex 双向转换 |
+| `src/utils/tradeMarks.ts` | ⭐⭐ | 商标Logo工具 | 图片预加载、品牌匹配 |
 | `src-tauri/src/lib.rs` | ⭐⭐ | 命令注册 | 了解 Rust 端入口 |
 | `src-tauri/src/commands/image.rs` | ⭐⭐ | 图片命令 | Rust 命令的基本写法 |
 | `src-tauri/src/engine/image.rs` | ⭐⭐⭐ | 图片引擎 | Rust 图片处理、RGBA→RGB |
@@ -1061,10 +1081,10 @@ GitHub Actions 配置文件：[.github/workflows/build.yml](../.github/workflows
   useTauriCommands.ts → lib.rs → commands/image.rs → engine/image.rs
 
 第三遍（理解核心）：
-  useCanvas.ts (反复读，对照此教程第 4 章)
+  useWatermarkDrawing.ts (反复读，对照此教程第 4 章) → useCanvas.ts → utils/tradeMarks.ts
 
 第四遍（理解全局）：
-  RightPanel → BatchPanel → build.yml（CI/CD）
+  RightPanel → 子面板组件 → ExportSection → BatchPanel（批处理独立配置） → build.yml（CI/CD）
 ```
 
 ---

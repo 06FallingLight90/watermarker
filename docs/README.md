@@ -6,6 +6,7 @@
 
 - **图片加载** — 支持 JPG / PNG / BMP / WebP 格式
 - **EXIF 元数据展示** — 相机型号、镜头、光圈、快门、ISO、焦距、GPS 等信息
+- **EXIF 商标 Logo** — Canon / Nikon / Sony 相机自动替换相机型号文本为厂商商标图片
 - **文字水印** — 可自定义文字、字号、颜色、位置、透明度，支持**平铺模式**
 - **Logo 水印** — 支持 PNG/JPG/SVG/WebP 作为水印图层，可调缩放、位置、透明度
 - **实时 Canvas 预览** — 所见即所得，预览与导出结果一致
@@ -47,18 +48,34 @@ npm run tauri build
 watermarker/
 ├── src/                        # Vue 3 前端源码
 │   ├── components/             # Vue 组件
+│   │   ├── watermark/          # 水印类型子面板
+│   │   │   ├── TextWatermarkPanel.vue   # 文字水印设置
+│   │   │   ├── LogoWatermarkPanel.vue   # Logo 水印设置
+│   │   │   ├── ExifWatermarkPanel.vue   # EXIF 水印设置
+│   │   │   └── ExifFieldStylePanel.vue  # EXIF 字段样式
+│   │   ├── export/             # 导出相关
+│   │   │   └── ExportSection.vue        # 格式选择 & 导出按钮
 │   │   ├── LeftPanel.vue       # 文件选择 & EXIF 信息
 │   │   ├── CenterCanvas.vue    # Canvas 实时预览
-│   │   ├── RightPanel.vue      # 水印设置 & 导出
+│   │   ├── RightPanel.vue      # 水印设置容器（类型切换 + 子面板）
 │   │   └── BatchPanel.vue      # 批量处理面板
 │   ├── composables/            # 组合式逻辑
-│   │   ├── useCanvas.ts        # Canvas 渲染核心（预览 & 导出）
+│   │   ├── useCanvas.ts        # Canvas 预览 composable（重新导出绘制函数）
+│   │   ├── useWatermarkDrawing.ts  # 纯 Canvas 绘制函数（文字/Logo/EXIF）
+│   │   ├── useFontLoader.ts    # 系统字体扫描 + 自定义字体加载
 │   │   └── useTauriCommands.ts # Tauri 命令封装
 │   ├── stores/                 # Pinia 状态管理
 │   │   ├── image.ts            # 当前图片 & 渲染结果
 │   │   ├── watermark.ts        # 水印配置
 │   │   └── batch.ts            # 批处理状态
 │   ├── types/index.ts          # TypeScript 类型定义
+│   ├── assets/
+│   │   └── trade_marks/        # Canon / Nikon / Sony 商标 PNG
+│   ├── utils/
+│   │   ├── colorConvert.ts     # rgbToHex / hexToRgb 颜色转换
+│   │   └── tradeMarks.ts      # 商标图片预加载与品牌匹配
+│   ├── styles/
+│   │   └── shared.css          # 各面板共用表单/控件样式
 │   ├── App.vue                 # 根组件（三栏布局）
 │   ├── main.ts                 # 应用入口
 │   └── style.css               # 全局样式

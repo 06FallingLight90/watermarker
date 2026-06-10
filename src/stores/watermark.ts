@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
-import type { TextWatermarkConfig, LogoWatermarkConfig, ExifWatermarkConfig, ExifFieldVisibility, ExifFieldStyle, ExifFieldGroup, WatermarkType, FontEntry } from "@/types";
+import type { TextWatermarkConfig, LogoWatermarkConfig, ExifWatermarkConfig, ExifFieldVisibility, ExifFieldStyle, ExifFieldGroup, WatermarkType, FontEntry, BatchWatermarkConfig } from "@/types";
 
 const STORAGE_KEY = "watermarker-config";
 
@@ -80,6 +80,8 @@ export const useWatermarkStore = defineStore("watermark", () => {
     layout_mode: "unified",
     fields: defaultExifFields(),
     field_styles: defaultFieldStyles(),
+    trade_mark_enabled: true,
+    trade_mark_scale: 15,
   });
 
   /// MIME format of the loaded logo image ("png" | "jpeg"), used to decode raw base64
@@ -117,9 +119,69 @@ export const useWatermarkStore = defineStore("watermark", () => {
     watermarkType.value = type;
   }
 
+  // ── Batch per-image config support ──
+
+  /** When true, saveToStorage() is skipped (used during batch-config loading) */
+  const suppressSave = ref(false);
+
+  // Timer handle for debounced auto-save (also referenced by loadSnapshot)
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Export the current watermark configuration as a complete snapshot */
+  function snapshotConfig(): BatchWatermarkConfig {
+    return JSON.parse(JSON.stringify({
+      watermarkType: watermarkType.value,
+      textConfig: textConfig.value,
+      logoConfig: logoConfig.value,
+      exifConfig: exifConfig.value,
+      logoFormat: logoFormat.value,
+      fontFamily: fontFamily.value,
+      fontPath: fontPath.value,
+      enabled: enabled.value,
+    }));
+  }
+
+  /** Load a BatchWatermarkConfig snapshot into the store (suppresses persistence) */
+  function loadSnapshot(config: BatchWatermarkConfig) {
+    // Clear any pending auto-save so it doesn't fire after we re-enable
+    if (saveTimer) clearTimeout(saveTimer);
+    suppressSave.value = true;
+
+    watermarkType.value = config.watermarkType;
+    Object.assign(textConfig.value, config.textConfig);
+    Object.assign(logoConfig.value, config.logoConfig);
+    // Deep merge exifConfig
+    if (config.exifConfig.fields) {
+      Object.assign(exifConfig.value.fields, config.exifConfig.fields);
+      delete (config.exifConfig as unknown as Record<string, unknown>).fields;
+    }
+    if (config.exifConfig.field_styles) {
+      for (const key of EXIF_STYLE_GROUPS) {
+        if ((config.exifConfig.field_styles as Record<string, ExifFieldStyle>)[key]) {
+          Object.assign(
+            exifConfig.value.field_styles[key],
+            (config.exifConfig.field_styles as Record<string, ExifFieldStyle>)[key]
+          );
+        }
+      }
+      delete (config.exifConfig as unknown as Record<string, unknown>).field_styles;
+    }
+    Object.assign(exifConfig.value, config.exifConfig);
+    logoFormat.value = config.logoFormat;
+    fontFamily.value = config.fontFamily;
+    fontPath.value = config.fontPath;
+    enabled.value = config.enabled;
+
+    // Re-enable persistence after the debounce window passes
+    setTimeout(() => {
+      suppressSave.value = false;
+    }, 500);
+  }
+
   // ── Persistence ──
 
   function saveToStorage() {
+    if (suppressSave.value) return;
     // Deep-copy field_styles (nested reactive objects with arrays)
     const stylesCopy: Record<string, ExifFieldStyle> = {};
     for (const key of EXIF_STYLE_GROUPS) {
@@ -204,7 +266,6 @@ export const useWatermarkStore = defineStore("watermark", () => {
   restoreFromStorage();
 
   // Debounced auto-save on any config change
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
   watch(
     [watermarkType, textConfig, logoConfig, exifConfig, enabled, fontPath, fontFamily, logoFormat],
     () => {
@@ -227,5 +288,7 @@ export const useWatermarkStore = defineStore("watermark", () => {
     enabled,
     currentConfig,
     setType,
+    snapshotConfig,
+    loadSnapshot,
   };
 });

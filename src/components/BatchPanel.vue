@@ -4,7 +4,7 @@ import { useBatchStore } from "@/stores/batch";
 import { useImageStore } from "@/stores/image";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
-import { renderOffscreen, type ExportFormat } from "@/composables/useCanvas";
+import { renderOffscreenWithConfig, type ExportFormat } from "@/composables/useWatermarkDrawing";
 
 const batchStore = useBatchStore();
 const imageStore = useImageStore();
@@ -24,20 +24,49 @@ async function selectFiles() {
     });
     if (selected) {
       const files = Array.isArray(selected) ? selected : [selected as string];
-      batchStore.addFiles(files);
+      // All files get the current watermark config as their default
+      batchStore.addFiles(files, watermarkStore.snapshotConfig());
 
       // Auto-load the first file into preview if no image is currently displayed
       if (!imageStore.hasImage) {
-        try {
-          const info = await loadImageCmd(files[0]);
-          imageStore.setImage(info, files[0]);
-        } catch {
-          // If loading fails, it's still fine — the file stays in the batch queue
-        }
+        await openBatchFile(0);
       }
     }
   } catch (e) {
     console.error("Failed to select files:", e);
+  }
+}
+
+/** Click a file in the queue — save previous config, load new image + config */
+async function openBatchFile(idx: number) {
+  // Already viewing this file — no-op
+  if (batchStore.activeIndex === idx) return;
+
+  // Save current watermark config to previously active entry
+  if (batchStore.activeIndex !== null && batchStore.activeIndex !== idx) {
+    batchStore.updateEntryConfig(batchStore.activeIndex, watermarkStore.snapshotConfig());
+  }
+
+  batchStore.setActive(idx);
+  const entry = batchStore.entries[idx];
+
+  try {
+    // 1. Load watermark config FIRST (so renderPreview uses correct config)
+    watermarkStore.loadSnapshot(entry.config);
+
+    // 2. Load image (watchers in useCanvas auto-trigger renderPreview)
+    const info = await loadImageCmd(entry.path);
+    imageStore.setImage(info, entry.path);
+
+    // 3. Load EXIF (optional)
+    try {
+      const exif = await readExif(entry.path);
+      imageStore.setExif(exif);
+    } catch {
+      // EXIF is optional
+    }
+  } catch (e) {
+    console.error("Failed to open batch file:", e);
   }
 }
 
@@ -58,21 +87,26 @@ async function selectOutputDir() {
 }
 
 async function startBatch() {
-  if (batchStore.files.length === 0) return;
+  if (batchStore.entries.length === 0) return;
   if (!outputDir.value) {
     await selectOutputDir();
     if (!outputDir.value) return;
   }
 
+  // Save current config to active entry before processing
+  if (batchStore.activeIndex !== null) {
+    batchStore.updateEntryConfig(batchStore.activeIndex, watermarkStore.snapshotConfig());
+  }
+
   batchStore.setProcessing(true);
   batchStore.progressList.length = 0;
 
-  const total = batchStore.files.length;
+  const total = batchStore.entries.length;
   let completed = 0;
 
-  for (let i = 0; i < batchStore.files.length; i++) {
-    const filePath = batchStore.files[i];
-    const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
+  for (let i = 0; i < batchStore.entries.length; i++) {
+    const entry = batchStore.entries[i];
+    const fileName = entry.path.split(/[\\/]/).pop() ?? entry.path;
 
     batchStore.updateProgress({
       current: i + 1,
@@ -83,20 +117,22 @@ async function startBatch() {
     });
 
     try {
-      const raw = await loadImageRaw(filePath);
+      const raw = await loadImageRaw(entry.path);
       const sourceMime = `image/${raw.format || "jpeg"}`;
 
       // Read EXIF data if watermark type is exif
       let exif = null;
-      if (watermarkStore.watermarkType === "exif") {
+      if (entry.config.watermarkType === "exif") {
         try {
-          exif = await readExif(filePath);
+          exif = await readExif(entry.path);
         } catch {
           // EXIF is optional — proceed without it
         }
       }
 
-      const base64 = await renderOffscreen(raw.base64, batchFormat.value, watermarkStore, sourceMime, exif);
+      const base64 = await renderOffscreenWithConfig(
+        raw.base64, batchFormat.value, entry.config, sourceMime, exif
+      );
 
       const ext = batchFormat.value;
       const outPath = `${outputDir.value}/watermarked_${fileName.replace(/\.[^.]+$/, "")}.${ext}`;
@@ -174,9 +210,20 @@ function removeFile(index: number) {
         </span>
       </div>
 
-      <ul v-if="batchStore.files.length > 0" class="file-list">
-        <li v-for="(file, idx) in batchStore.files" :key="file" class="file-item">
-          <span class="file-name">{{ file.split(/[\\/]/).pop() }}</span>
+      <ul v-if="batchStore.entries.length > 0" class="file-list">
+        <li
+          v-for="(entry, idx) in batchStore.entries"
+          :key="entry.path"
+          class="file-item"
+          :class="{ active: batchStore.activeIndex === idx }"
+        >
+          <span
+            class="file-name"
+            @click="openBatchFile(idx)"
+            :title="'点击预览: ' + entry.path"
+          >
+            {{ entry.path.split(/[\\/]/).pop() }}
+          </span>
           <span
             v-if="batchStore.progressList[idx]?.status === 'done'"
             class="status done"
@@ -267,7 +314,7 @@ function removeFile(index: number) {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 150px;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -275,9 +322,21 @@ function removeFile(index: number) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 4px 6px;
   font-size: 13px;
   border-bottom: 1px solid #1a1a1a;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.file-item:hover {
+  background: #1e1e1e;
+}
+
+.file-item.active {
+  background: #1a3a2a;
+  border-left: 3px solid #3a7a4a;
+  padding-left: 3px;
 }
 
 .file-name {
@@ -285,6 +344,12 @@ function removeFile(index: number) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  color: #ccc;
+}
+
+.file-item.active .file-name {
+  color: #4a9;
 }
 
 .status {

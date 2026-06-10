@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { ref, inject } from "vue";
 import { useImageStore } from "@/stores/image";
+import { useBatchStore } from "@/stores/batch";
+import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
 
 const renderPreview = inject<() => Promise<void>>("renderPreview", async () => {});
 
 const imageStore = useImageStore();
+const batchStore = useBatchStore();
+const watermarkStore = useWatermarkStore();
 const { loadImage, readExif } = useTauriCommands();
 const loading = ref(false);
 const error = ref("");
@@ -26,6 +30,13 @@ async function handleFileSelect() {
     if (selected) {
       loading.value = true;
       error.value = "";
+
+      // Save current watermark config to active batch entry (if any)
+      if (batchStore.activeIndex !== null) {
+        batchStore.updateEntryConfig(batchStore.activeIndex, watermarkStore.snapshotConfig());
+        batchStore.setActive(null);
+      }
+
       const path = selected as string;
       const info = await loadImage(path);
       imageStore.setImage(info, path);
@@ -47,6 +58,11 @@ async function handleFileSelect() {
 }
 
 function clearImage() {
+  // Save current watermark config to active batch entry before clearing
+  if (batchStore.activeIndex !== null) {
+    batchStore.updateEntryConfig(batchStore.activeIndex, watermarkStore.snapshotConfig());
+    batchStore.setActive(null);
+  }
   imageStore.clearImage();
 }
 </script>
