@@ -59,6 +59,13 @@ export const useBatchStore = defineStore("batch", () => {
     }
   }
 
+  /** Apply the same watermark config to all entries in the queue */
+  function applyConfigToAll(config: BatchWatermarkConfig) {
+    for (let i = 0; i < entries.value.length; i++) {
+      entries.value[i].config = JSON.parse(JSON.stringify(config));
+    }
+  }
+
   function clearFiles() {
     entries.value = [];
     progressList.value = [];
@@ -93,6 +100,7 @@ export const useBatchStore = defineStore("batch", () => {
     removeFile,
     setActive,
     updateEntryConfig,
+    applyConfigToAll,
     clearFiles,
     updateProgress,
     setProcessing,

@@ -161,6 +161,13 @@ async function startBatch() {
   alert(`批处理完成: ${completed}/${total} 张图片已处理`);
 }
 
+/** Apply the current preview watermark config to all files in the queue */
+function applyCurrentConfigToAll() {
+  if (batchStore.entries.length === 0) return;
+  const config = watermarkStore.snapshotConfig();
+  batchStore.applyConfigToAll(config);
+}
+
 function removeFile(index: number) {
   batchStore.removeFile(index);
 }
@@ -178,6 +185,15 @@ function removeFile(index: number) {
         <button class="btn btn-sm" @click="selectFiles">添加文件</button>
         <button class="btn btn-sm" @click="selectOutputDir">
           {{ outputDir ? "输出: " + outputDir.split(/[\\/]/).pop() : "选择输出目录" }}
+        </button>
+
+        <button
+          class="btn btn-sm"
+          @click="applyCurrentConfigToAll"
+          :disabled="batchStore.totalFiles === 0 || batchStore.isProcessing"
+          title="将当前预览中的水印设置应用到队列中所有图片"
+        >
+          应用当前设置到全部
         </button>
 
         <div class="format-select">
