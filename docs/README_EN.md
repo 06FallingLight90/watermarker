@@ -11,7 +11,7 @@ Install this watermark editor — weighing just a few megabytes — via a one-cl
 
 Watermarks use a **"relative size"** and **"relative position"** scheme that automatically adapts to photos of different dimensions. Per-image watermark customization within the batch queue is also supported — fast and polished.
 
-Originally born from an amateur photography enthusiast's UML modeling course assignment. As a novice developer's work, feedback and suggestions are most welcome!
+Originally born from an amateur photography enthusiast's UML modeling course assignment. As a novice developer's work, feedback and suggestions are most welcome!For learning and self-usage. More than glad if this project helps!
 
 ![Sample](../src/assets/sample.jpg "Application Sample")
 
