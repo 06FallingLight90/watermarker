@@ -1,5 +1,7 @@
 # Watermarker — 图片水印编辑器
 
+[English](./README_EN.md)
+
 轻量级跨平台图片水印编辑应用。基于 **Tauri v2 + Vue 3 + TypeScript** 构建。
 
 想让自己拍摄的照片更加个性化，却又懒于手动添加调整水印？照片太多了一张一张调整太麻烦？watermarker来帮您。
@@ -11,6 +13,8 @@
 
 
 起源于业余摄影爱好者的一次UML建模课作业。开发新手之作有不足之处请指教！！！
+
+![示例](../src/assets/sample.jpg "应用示例")
 
 ## 功能特性
 
@@ -26,6 +30,18 @@
 - **轻量化** — 安装包 < 10MB
 
 ## 快速开始
+
+### 安装使用
+
+点击以下链接下载对应操作系统的安装包
+
+[![下载 Windows 安装包](https://img.shields.io/badge/下载-Windows%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_x64-setup.exe)
+
+[![下载 macOS 安装包](https://img.shields.io/badge/下载-macOS%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_aarch64.dmg)
+
+[![下载 Linux 安装包](https://img.shields.io/badge/下载-Linux%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_amd64.AppImage)
+
+
 
 ### 环境要求
 
