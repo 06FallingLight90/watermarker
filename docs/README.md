@@ -35,11 +35,11 @@
 
 点击以下链接下载对应操作系统的安装包
 
-[![下载 Windows 安装包](https://img.shields.io/badge/下载-Windows%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_x64-setup.exe)
+[![下载 Windows 安装包](https://img.shields.io/badge/下载-Windows%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.2/Watermarker_0.4.2_x64-setup.exe)
 
-[![下载 macOS 安装包](https://img.shields.io/badge/下载-macOS%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_aarch64.dmg)
+[![下载 macOS 安装包](https://img.shields.io/badge/下载-macOS%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.2/Watermarker_0.4.2_aarch64.dmg)
 
-[![下载 Linux 安装包](https://img.shields.io/badge/下载-Linux%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_amd64.AppImage)
+[![下载 Linux 安装包](https://img.shields.io/badge/下载-Linux%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.2/Watermarker_0.4.2_amd64.AppImage)
 
 
 

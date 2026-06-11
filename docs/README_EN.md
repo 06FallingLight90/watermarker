@@ -34,11 +34,11 @@ Originally born from an amateur photography enthusiast's UML modeling course ass
 
 Click the links below to download the installer for your operating system:
 
-[![Download Windows Installer](https://img.shields.io/badge/Download-Windows%20Installer-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_x64-setup.exe)
+[![Download Windows Installer](https://img.shields.io/badge/Download-Windows%20Installer-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.2/Watermarker_0.4.2_x64-setup.exe)
 
-[![Download macOS Installer](https://img.shields.io/badge/Download-macOS%20Installer-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_aarch64.dmg)
+[![Download macOS Installer](https://img.shields.io/badge/Download-macOS%20Installer-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.2/Watermarker_0.4.2_aarch64.dmg)
 
-[![Download Linux Installer](https://img.shields.io/badge/Download-Linux%20Installer-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.0/Watermarker_0.4.0_amd64.AppImage)
+[![Download Linux Installer](https://img.shields.io/badge/Download-Linux%20Installer-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.2/Watermarker_0.4.2_amd64.AppImage)
 
 ### Requirements
 
