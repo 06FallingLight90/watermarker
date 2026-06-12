@@ -16,7 +16,7 @@ export const useImageStore = defineStore("image", () => {
     filePath.value = path;
   }
 
-  function setExif(data: ExifData) {
+  function setExif(data: ExifData | null) {
     exifData.value = data;
   }
 

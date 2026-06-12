@@ -54,17 +54,18 @@ async function openBatchFile(idx: number) {
     // 1. Load watermark config FIRST (so renderPreview uses correct config)
     watermarkStore.loadSnapshot(entry.config);
 
-    // 2. Load image (watchers in useCanvas auto-trigger renderPreview)
-    const info = await loadImageCmd(entry.path);
-    imageStore.setImage(info, entry.path);
-
-    // 3. Load EXIF (optional)
+    // 2. Load EXIF BEFORE image (so image-change watcher renders with correct EXIF)
     try {
       const exif = await readExif(entry.path);
       imageStore.setExif(exif);
     } catch {
-      // EXIF is optional
+      // EXIF is optional — clear stale EXIF from previous image
+      imageStore.setExif(null);
     }
+
+    // 3. Load image (watchers in useCanvas auto-trigger renderPreview with correct EXIF)
+    const info = await loadImageCmd(entry.path);
+    imageStore.setImage(info, entry.path);
   } catch (e) {
     console.error("Failed to open batch file:", e);
   }

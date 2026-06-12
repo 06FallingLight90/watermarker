@@ -60,6 +60,12 @@ export function useCanvas() {
     },
     { deep: true }
   );
+  watch(
+    () => imageStore.exifData,
+    () => {
+      if (imageStore.hasImage) renderPreview();
+    }
+  );
 
   return { renderPreview, canvasRef, isLoading };
 }
