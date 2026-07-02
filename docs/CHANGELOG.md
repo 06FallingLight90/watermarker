@@ -1,5 +1,19 @@
 # 更新日志
 
+## v0.4.3 (2026-07)
+
+### 新增
+
+- **图片缓存机制**：引入 LRU 图片缓存（`useImageCache`），在图片加入批处理队列时后台预加载，预览切换时直接从缓存读取，跳过 Rust 解码（~200-500ms）和浏览器 Image 解码（~50-150ms），预览切换速度提升约 10 倍
+  - `src/composables/useImageCache.ts`：模块级单例缓存，最多缓存 10 张图片的 base64 + HTMLImageElement + EXIF，LRU 淘汰策略
+  - `src/composables/useCanvas.ts`：`renderPreview()` 自动检测缓存，命中时直接使用已解码的 Image 元素
+  - `src/components/BatchPanel.vue`：`selectFiles` 加入文件后自动后台预加载；`openBatchFile` 切换预览时优先查缓存
+  - `src/components/LeftPanel.vue`：`handleFileSelect` 单图打开时也优先查缓存
+- **加载进度反馈**：图片加载/预加载时显示进度指示器，改善交互体验
+  - `CenterCanvas.vue`：Canvas 区域新增加载中遮罩层（旋转动画 + "加载中..."文字）
+  - `BatchPanel.vue`：批处理面板头部和展开区域均显示预加载进度（进度条 + "N/M" 计数）
+  - `useImageCache.ts`：导出 `preloadProgress` reactive 对象，提供 `current`/`total`/`isActive` 状态
+
 ## v0.4.2 (2026-06)
 
 ### 新增

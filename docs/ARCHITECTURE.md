@@ -47,6 +47,7 @@ Watermarker 采用 **Tauri v2 混合架构**：Rust 后端处理文件 I/O 和�
 │  └──────────────────────────────────────────────────┘│
 │  ┌──────────────────────────────────────────────────┐│
 │  │   useCanvas.ts (composable, 重新导出上述函数)       ││
+│  │   useImageCache.ts (LRU图片缓存 + 预加载进度)       ││
 │  │   useFontLoader.ts (系统字体+自定义字体加载)        ││
 │  │   utils/colorConvert.ts (rgbToHex/hexToRgb)       ││
 │  │   utils/tradeMarks.ts (商标Logo预加载+品牌匹配)     ││
@@ -95,15 +96,16 @@ Watermarker 采用 **Tauri v2 混合架构**：Rust 后端处理文件 I/O 和�
     │
     ▼
 [Canvas] renderPreview()
-    │ 1. loadImageFromBase64() → HTMLImageElement
-    │ 2. 计算缩放比例 (适应容器)
-    │ 3. ctx.drawImage() → Canvas
-    │ 4. renderWatermarkStatic(ctx, canvas, scale, store)  [useWatermarkDrawing.ts]
+    │ 1. 检查 useImageCache → 命中则直接用缓存的 HTMLImageElement
+    │ 2. 未命中 → loadImageFromBase64() → HTMLImageElement
+    │ 3. 计算缩放比例 (适应容器)
+    │ 4. ctx.drawImage() → Canvas
+    │ 5. renderWatermarkStatic(ctx, canvas, scale, store)  [useWatermarkDrawing.ts]
     │    └─ text: drawTextWatermarkStatic()
     │    └─ logo: drawLogoWatermarkStatic()
     │    └─ exif: drawExifWatermarkStatic()
        └─ camera_model 匹配Canon/Nikon/Sony → 绘制商标Logo替代文字
-    │ 5. canvas.toDataURL() → imageStore.renderedBase64
+    │ 6. canvas.toDataURL() → imageStore.renderedBase64
     ▼
 实时预览完成 (响应式更新)
 ```
@@ -219,14 +221,20 @@ Watermarker 采用 **Tauri v2 混合架构**：Rust 后端处理文件 I/O 和�
 App.vue
   ├── LeftPanel ─────────────────────────────┐
   │   · 调用 loadImage/exif 命令              │
-  │   · inject("renderPreview") ←── provide  │
+  │   · 支持多文件选择 → 加入批处理队列        │
+  │   · 文件加载后由 Pinia watcher 自动触发    │
+  │     渲染（无需手动调用 renderPreview）     │
   │                                          │
   ├── CenterCanvas ──────────────────────────┤
   │   · 持有 <canvas> ref                    │
   │   · provide("renderPreview", fn) ────────┘
+  │   · 加载中遮罩层（spinner + 文字）        │
   │   · watch(imageStore.currentImage)       │
   │     watch(watermarkStore.$state)         │
+  │     watch(imageStore.exifData)           │
   │     → 自动触发 renderPreview()           │
+  │   · renderPreview() 自动查 useImageCache  │
+  │     命中则跳过 loadImageFromBase64()     │
   │                                          │
   ├── RightPanel (容器) ─────────────────────┘
   │   · 水印类型切换 + 启用/禁用
@@ -237,6 +245,9 @@ App.vue
   │
   └── BatchPanel
       · 直接 import renderOffscreen (模块级)
+      · 添加文件后自动后台预加载到 useImageCache
+      · 切换文件优先查缓存，命中则跳过 Rust 调用
+      · 显示预加载进度条 (preloadProgress)
       · 遍历文件列表逐文件处理
 ```
 

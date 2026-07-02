@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { ref, inject } from "vue";
+import { ref } from "vue";
 import { useImageStore } from "@/stores/image";
 import { useBatchStore } from "@/stores/batch";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
-
-const renderPreview = inject<() => Promise<void>>("renderPreview", async () => {});
+import { useImageCache } from "@/composables/useImageCache";
 
 const imageStore = useImageStore();
 const batchStore = useBatchStore();
 const watermarkStore = useWatermarkStore();
+const imageCache = useImageCache();
 const { loadImage, readExif } = useTauriCommands();
 const loading = ref(false);
 const error = ref("");
@@ -18,7 +18,7 @@ async function handleFileSelect() {
   try {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
-      multiple: false,
+      multiple: true,
       filters: [
         {
           name: "Images",
@@ -31,24 +31,45 @@ async function handleFileSelect() {
       loading.value = true;
       error.value = "";
 
+      const files = Array.isArray(selected) ? selected : [selected as string];
+
       // Save current watermark config to active batch entry (if any)
       if (batchStore.activeIndex !== null) {
         batchStore.updateEntryConfig(batchStore.activeIndex, watermarkStore.snapshotConfig());
         batchStore.setActive(null);
       }
 
-      const path = selected as string;
-      const info = await loadImage(path);
-      imageStore.setImage(info, path);
+      // Add all selected files to batch queue
+      batchStore.addFiles(files, watermarkStore.snapshotConfig());
 
-      try {
-        const exif = await readExif(path);
-        imageStore.setExif(exif);
-      } catch {
-        // EXIF is optional
+      // Preload files into image cache (background, non-blocking)
+      imageCache.preloadAll(files);
+
+      // Auto-load the first file into preview if no image is currently displayed
+      if (!imageStore.hasImage) {
+        loading.value = false;
+        // openBatchFile logic inline: load first file as preview
+        const firstPath = files[0];
+        const cached = imageCache.get(firstPath);
+        if (cached) {
+          imageStore.setExif(cached.exif);
+          imageStore.setImage(
+            { base64: cached.base64, width: cached.width, height: cached.height, format: cached.format },
+            firstPath,
+          );
+          return;
+        }
+
+        const info = await loadImage(firstPath);
+        imageStore.setImage(info, firstPath);
+
+        try {
+          const exif = await readExif(firstPath);
+          imageStore.setExif(exif);
+        } catch {
+          // EXIF is optional
+        }
       }
-
-      await renderPreview();
     }
   } catch (e) {
     error.value = `Failed to load image: ${e}`;

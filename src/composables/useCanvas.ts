@@ -5,6 +5,7 @@ import {
   loadImageFromBase64,
   renderWatermarkStatic,
 } from "@/composables/useWatermarkDrawing";
+import { useImageCache } from "@/composables/useImageCache";
 
 // Re-export for consumers that need module-level export functions
 export { renderFullRes, renderOffscreen, renderOffscreenWithConfig, loadImageFromBase64, type ExportFormat } from "@/composables/useWatermarkDrawing";
@@ -14,6 +15,7 @@ export { renderFullRes, renderOffscreen, renderOffscreenWithConfig, loadImageFro
 export function useCanvas() {
   const imageStore = useImageStore();
   const watermarkStore = useWatermarkStore();
+  const imageCache = useImageCache();
 
   const isLoading = ref(false);
   const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -28,7 +30,9 @@ export function useCanvas() {
 
     isLoading.value = true;
 
-    const mainImg = await loadImageFromBase64(img.base64);
+    // Use cached HTMLImageElement when available (avoids browser re-decode)
+    const cached = imageCache.get(imageStore.filePath);
+    const mainImg = cached?.img ?? await loadImageFromBase64(img.base64);
 
     const container = canvas.parentElement;
     const maxW = container?.clientWidth ?? 1280;

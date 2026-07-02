@@ -85,6 +85,7 @@ watermarker/
 │   ├── composables/            # Composition logic
 │   │   ├── useCanvas.ts        # Canvas preview composable (re-exports drawing functions)
 │   │   ├── useWatermarkDrawing.ts  # Pure Canvas drawing functions (text/logo/EXIF)
+│   │   ├── useImageCache.ts    # LRU image cache + preload progress
 │   │   ├── useFontLoader.ts    # System font scanning + custom font loading
 │   │   └── useTauriCommands.ts # Typed Tauri command wrappers
 │   ├── stores/                 # Pinia state management

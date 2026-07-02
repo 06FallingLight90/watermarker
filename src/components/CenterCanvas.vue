@@ -4,7 +4,7 @@ import { useImageStore } from "@/stores/image";
 import { useCanvas } from "@/composables/useCanvas";
 
 const imageStore = useImageStore();
-const { renderPreview, canvasRef } = useCanvas();
+const { renderPreview, canvasRef, isLoading } = useCanvas();
 
 provide("renderPreview", renderPreview);
 </script>
@@ -18,6 +18,12 @@ provide("renderPreview", renderPreview);
       </div>
 
       <canvas ref="canvasRef" v-show="imageStore.hasImage" />
+
+      <!-- Loading overlay -->
+      <div v-if="isLoading" class="loading-overlay">
+        <div class="spinner" />
+        <p class="loading-text">加载中...</p>
+      </div>
     </div>
   </div>
 </template>
@@ -60,5 +66,39 @@ canvas {
 
 .placeholder p {
   font-size: 16px;
+}
+
+/* ── Loading overlay ── */
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 13, 13, 0.75);
+  z-index: 10;
+  gap: 16px;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: #4a9;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #999;
+  margin: 0;
+  user-select: none;
 }
 </style>

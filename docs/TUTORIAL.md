@@ -91,6 +91,11 @@ watermarker/
 ├── src/                  ← 前端代码（Vue/TypeScript）
 │   ├── components/       ← 界面组件
 │   ├── composables/      ← 可复用的逻辑函数
+│   │   ├── useCanvas.ts           ← Canvas 预览 + 响应式
+│   │   ├── useWatermarkDrawing.ts ← 纯绘制函数
+│   │   ├── useImageCache.ts       ← LRU 图片缓存
+│   │   ├── useFontLoader.ts       ← 字体加载
+│   │   └── useTauriCommands.ts    ← Tauri 命令封装
 │   ├── stores/           ← 全局数据（Pinia）
 │   └── types/            ← 数据类型定义
 ├── src-tauri/            ← 后端代码（Rust）
@@ -427,7 +432,7 @@ useWatermarkDrawing.ts (纯绘制函数，无 Vue 依赖)
 useCanvas.ts (Vue composable)
 │
 ├── 重新导出上面所有函数（向后兼容）
-└── useCanvas()                     — 预览渲染 + 响应式监听
+└── useCanvas()                     — 预览渲染 + 缓存查询 + 响应式监听
 ```
 
 ### 4.3 核心函数详解
@@ -538,8 +543,9 @@ export function useCanvas() {
     const ctx = canvas.getContext("2d");
     const img = imageStore.currentImage;
 
-    // 1. 加载原图
-    const mainImg = await loadImageFromBase64(img.base64);
+    // 1. 加载原图（优先从缓存获取，避免重复解码）
+    const cached = imageCache.get(imageStore.filePath);
+    const mainImg = cached?.img ?? await loadImageFromBase64(img.base64);
 
     // 2. 计算缩放比例（适应容器大小，最大不超过原图）
     const container = canvas.parentElement;
@@ -1059,7 +1065,8 @@ GitHub Actions 配置文件：[.github/workflows/build.yml](../.github/workflows
 | `src/components/export/ExportSection.vue` | ⭐⭐⭐ | 导出区域 | 完整导出交互流程 |
 | `src/components/BatchPanel.vue` | ⭐⭐⭐ | 批处理面板 | 理解循环异步处理 |
 | `src/composables/useWatermarkDrawing.ts` | ⭐⭐⭐⭐ | **核心！** 纯绘制函数 | 理解预览/导出统一逻辑 |
-| `src/composables/useCanvas.ts` | ⭐⭐⭐ | Canvas composable | 理解 Vue 响应式 + 绘制桥接 |
+| `src/composables/useCanvas.ts` | ⭐⭐⭐ | Canvas composable | 理解 Vue 响应式 + 缓存 + 绘制桥接 |
+| `src/composables/useImageCache.ts` | ⭐⭐ | 图片缓存 | LRU 缓存策略 + 预加载进度 |
 | `src/composables/useFontLoader.ts` | ⭐⭐ | 字体加载 | FontFace API + 系统字体扫描 |
 | `src/utils/colorConvert.ts` | ⭐ | 颜色转换工具 | rgb/hex 双向转换 |
 | `src/utils/tradeMarks.ts` | ⭐⭐ | 商标Logo工具 | 图片预加载、品牌匹配 |

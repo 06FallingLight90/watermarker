@@ -28,7 +28,7 @@ Frontend dev server runs on `http://localhost:1420`. Rust changes auto-recompile
 **Tauri v2 + Vue 3 + TypeScript** desktop app. Rust backend handles file I/O and image codec operations; Vue frontend owns the Canvas-based watermark rendering. This split is intentional — see "WYSIWYG consistency" below.
 
 ### Layout (App.vue)
-- **LeftPanel** — File open, EXIF display
+- **LeftPanel** — Multi-file open (adds to batch queue), EXIF display
 - **CenterCanvas** — Live Canvas preview, provides `renderPreview` via `provide/inject`
 - **RightPanel** — Watermark type tabs + enable toggle; delegates to sub-panels
   - `watermark/TextWatermarkPanel.vue` — Text watermark config form
@@ -52,6 +52,7 @@ src/
 ├── composables/
 │   ├── useCanvas.ts        # Composable: canvas preview + reactivity
 │   ├── useWatermarkDrawing.ts  # Pure drawing functions (text/logo/EXIF on Canvas)
+│   ├── useImageCache.ts    # LRU image cache + preload progress tracking
 │   ├── useFontLoader.ts    # System font scanning + custom font loading
 │   └── useTauriCommands.ts # Typed wrappers for Tauri invoke()
 ├── stores/                 # Pinia stores (image, watermark, batch)
@@ -69,7 +70,7 @@ src/
 
 **Preview and export share the same Canvas drawing code.** This ensures WYSIWYG.
 
-1. `useCanvas.ts` `renderPreview()` — draws to the visible canvas at container-scale
+1. `useCanvas.ts` `renderPreview()` — draws to the visible canvas at container-scale; checks `useImageCache` first to skip browser re-decode
 2. `useWatermarkDrawing.ts` `renderFullRes()` — draws to an offscreen canvas at scale=1.0 for single-image export
 3. `useWatermarkDrawing.ts` `renderOffscreen()` — same as above but takes arbitrary base64 input, used by batch processing
 4. `useWatermarkDrawing.ts` `renderOffscreenWithConfig()` — renders with a `BatchWatermarkConfig` snapshot (batch per-image config)

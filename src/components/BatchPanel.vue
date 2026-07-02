@@ -5,10 +5,12 @@ import { useImageStore } from "@/stores/image";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
 import { renderOffscreenWithConfig, type ExportFormat } from "@/composables/useWatermarkDrawing";
+import { useImageCache, preloadProgress } from "@/composables/useImageCache";
 
 const batchStore = useBatchStore();
 const imageStore = useImageStore();
 const watermarkStore = useWatermarkStore();
+const imageCache = useImageCache();
 const { exportFile, loadImage: loadImageCmd, loadImageRaw, readExif } = useTauriCommands();
 
 const expanded = ref(false);
@@ -26,6 +28,9 @@ async function selectFiles() {
       const files = Array.isArray(selected) ? selected : [selected as string];
       // All files get the current watermark config as their default
       batchStore.addFiles(files, watermarkStore.snapshotConfig());
+
+      // Preload selected files into image cache (background, non-blocking)
+      imageCache.preloadAll(files);
 
       // Auto-load the first file into preview if no image is currently displayed
       if (!imageStore.hasImage) {
@@ -50,20 +55,35 @@ async function openBatchFile(idx: number) {
   batchStore.setActive(idx);
   const entry = batchStore.entries[idx];
 
-  try {
-    // 1. Load watermark config FIRST (so renderPreview uses correct config)
-    watermarkStore.loadSnapshot(entry.config);
+  // 1. Load watermark config FIRST (so renderPreview uses correct config)
+  watermarkStore.loadSnapshot(entry.config);
 
-    // 2. Load EXIF BEFORE image (so image-change watcher renders with correct EXIF)
+  try {
+    // 2. Check cache — if hit, skip Rust load_image + read_exif entirely
+    const cached = imageCache.get(entry.path);
+    if (cached) {
+      // Use cached data: set image info + EXIF directly
+      imageStore.setExif(cached.exif);
+      imageStore.setImage(
+        { base64: cached.base64, width: cached.width, height: cached.height, format: cached.format },
+        entry.path,
+      );
+      // renderPreview() triggered by watcher — it will also hit the cache for the img element
+      return;
+    }
+
+    // 3. Cache miss — load normally
+    // Load EXIF BEFORE image (so image-change watcher renders with correct EXIF)
+    let exif = null;
     try {
-      const exif = await readExif(entry.path);
+      exif = await readExif(entry.path);
       imageStore.setExif(exif);
     } catch {
       // EXIF is optional — clear stale EXIF from previous image
       imageStore.setExif(null);
     }
 
-    // 3. Load image (watchers in useCanvas auto-trigger renderPreview with correct EXIF)
+    // Load image (watchers in useCanvas auto-trigger renderPreview with correct EXIF)
     const info = await loadImageCmd(entry.path);
     imageStore.setImage(info, entry.path);
   } catch (e) {
@@ -178,6 +198,9 @@ function removeFile(index: number) {
   <div class="batch-panel" :class="{ expanded }">
     <div class="batch-header" @click="expanded = !expanded">
       <span>批处理队列 ({{ batchStore.totalFiles }} 个文件)</span>
+      <span v-if="preloadProgress.isActive" class="preload-progress">
+        预加载中 {{ preloadProgress.current }}/{{ preloadProgress.total }}
+      </span>
       <span class="toggle-icon">{{ expanded ? "▼" : "▲" }}</span>
     </div>
 
@@ -215,6 +238,15 @@ function removeFile(index: number) {
         >
           {{ batchStore.isProcessing ? "处理中..." : "开始批处理" }}
         </button>
+      </div>
+
+      <!-- Preload progress bar -->
+      <div v-if="preloadProgress.isActive" class="preload-bar">
+        <div
+          class="preload-fill"
+          :style="{ width: (preloadProgress.total > 0 ? preloadProgress.current / preloadProgress.total * 100 : 0) + '%' }"
+        />
+        <span class="preload-text">预加载 {{ preloadProgress.current }}/{{ preloadProgress.total }}</span>
       </div>
 
       <div v-if="batchStore.isProcessing" class="progress-bar">
@@ -277,6 +309,13 @@ function removeFile(index: number) {
   background: #1a1a1a;
 }
 
+.preload-progress {
+  font-size: 12px;
+  color: #4a9;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
 .batch-body {
   padding: 0 16px 12px;
 }
@@ -325,6 +364,31 @@ function removeFile(index: number) {
   transform: translate(-50%, -50%);
   font-size: 12px;
   color: #fff;
+}
+
+.preload-bar {
+  height: 18px;
+  background: #1a2a1a;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.preload-fill {
+  height: 100%;
+  background: #4a9;
+  transition: width 0.3s;
+  opacity: 0.6;
+}
+
+.preload-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  color: #8c8;
 }
 
 .file-list {

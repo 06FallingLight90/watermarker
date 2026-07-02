@@ -88,6 +88,7 @@ watermarker/
 │   ├── composables/            # 组合式逻辑
 │   │   ├── useCanvas.ts        # Canvas 预览 composable（重新导出绘制函数）
 │   │   ├── useWatermarkDrawing.ts  # 纯 Canvas 绘制函数（文字/Logo/EXIF）
+│   │   ├── useImageCache.ts    # LRU 图片缓存 + 预加载进度
 │   │   ├── useFontLoader.ts    # 系统字体扫描 + 自定义字体加载
 │   │   └── useTauriCommands.ts # Tauri 命令封装
 │   ├── stores/                 # Pinia 状态管理
