@@ -236,6 +236,28 @@ const fieldStyleGroups: { key: "camera_model" | "lens_model" | "date_taken" | "g
         />
         <span class="range-val">{{ watermarkStore.exifConfig.tile_spacing }}px</span>
       </label>
+      <label>
+        行间距
+        <input
+          type="range"
+          min="0.5"
+          max="5"
+          step="0.1"
+          v-model.number="watermarkStore.exifConfig.line_spacing"
+        />
+        <span class="range-val">{{ watermarkStore.exifConfig.line_spacing.toFixed(1) }}x</span>
+      </label>
+      <label v-if="watermarkStore.exifConfig.trade_mark_enabled">
+        商标间距
+        <input
+          type="range"
+          min="0.2"
+          max="3"
+          step="0.05"
+          v-model.number="watermarkStore.exifConfig.trade_mark_spacing"
+        />
+        <span class="range-val">{{ watermarkStore.exifConfig.trade_mark_spacing.toFixed(2) }}x</span>
+      </label>
     </template>
 
     <!-- Independent mode: per-field style panels -->

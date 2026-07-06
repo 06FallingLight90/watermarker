@@ -95,6 +95,10 @@ export interface ExifWatermarkConfig {
   trade_mark_enabled: boolean;
   /** Trade mark logo size as percentage of photo width (1–100) */
   trade_mark_scale: number;
+  /** Line spacing multiplier for text lines in unified layout mode (default 1.6, range 0.5–5.0) */
+  line_spacing: number;
+  /** Trade mark logo vertical space multiplier in unified layout mode (default 1.0, range 0.2–3.0). 1.0 = natural logo height; lower = tighter spacing */
+  trade_mark_spacing: number;
 }
 
 export interface WatermarkResult {

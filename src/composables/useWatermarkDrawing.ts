@@ -322,17 +322,28 @@ export function drawExifWatermarkStatic(
     const {
       font_size, color, pos_x, pos_y, opacity,
       tile_spacing, rotation, stroke_color, stroke_width,
+      line_spacing, trade_mark_spacing,
     } = config;
     const unifiedStyle: ExifFieldStyle = {
       font_size, color, opacity, stroke_color, stroke_width,
       pos_x, pos_y, rotation,
     };
     const scaledSize = (font_size / 100) * canvas.width;
-    const lineHeight = scaledSize * 1.6;
+    const lineHeight = scaledSize * line_spacing;
     const angle = (rotation ?? 0) * Math.PI / 180;
-    const totalHeight = items.length * lineHeight;
     const x = pos_x * canvas.width;
     const y = pos_y * canvas.height;
+
+    // Compute total block height accounting for trade mark logo spacing
+    const logoFullH = canvas.width * (config.trade_mark_scale / 100); // 2 * logoH
+    let totalHeight = 0;
+    for (const it of items) {
+      if (useTradeMark && it.group === "camera_model") {
+        totalHeight += logoFullH * trade_mark_spacing;
+      } else {
+        totalHeight += lineHeight;
+      }
+    }
     const startY = y - totalHeight / 2 + lineHeight / 2;
 
     if (tile_spacing > 0) {
@@ -348,11 +359,11 @@ export function drawExifWatermarkStatic(
         }
         if (w > maxW) maxW = w;
       }
-      // Compute total tile height accounting for trade mark logo
+      // Compute total tile height accounting for trade mark logo spacing
       let tileH = 0;
       for (const it of items) {
         if (useTradeMark && it.group === "camera_model") {
-          tileH += canvas.width * (config.trade_mark_scale / 100) * 0.85;
+          tileH += logoFullH * trade_mark_spacing;
         } else {
           tileH += lineHeight;
         }
@@ -365,9 +376,10 @@ export function drawExifWatermarkStatic(
           let lineY = startY;
           for (let i = 0; i < items.length; i++) {
             if (useTradeMark && items[i].group === "camera_model") {
-              const logoH = canvas.width * (config.trade_mark_scale / 100) * 0.5;
-              drawTradeMarkAt(0, lineY + logoH, unifiedStyle);
-              lineY += logoH * 1.7;
+              const logoH = canvas.width * (config.trade_mark_scale / 100) / 2;
+              const tradeMarkAdvance = logoH * 2 * trade_mark_spacing;
+              drawTradeMarkAt(0, lineY + tradeMarkAdvance / 2, unifiedStyle);
+              lineY += tradeMarkAdvance;
             } else {
               drawStyledText(items[i].text, 0, lineY, unifiedStyle);
               lineY += lineHeight;
@@ -384,9 +396,10 @@ export function drawExifWatermarkStatic(
       for (let i = 0; i < items.length; i++) {
         if (useTradeMark && items[i].group === "camera_model") {
           const logoH = canvas.width * (config.trade_mark_scale / 100) / 2;
-          lineY += logoH;
+          const tradeMarkAdvance = logoH * 2 * trade_mark_spacing;
+          lineY += tradeMarkAdvance / 2;
           drawTradeMarkAt(0, lineY, unifiedStyle);
-          lineY += logoH;
+          lineY += tradeMarkAdvance / 2;
         } else {
           drawStyledText(items[i].text, 0, lineY, unifiedStyle);
           lineY += lineHeight;

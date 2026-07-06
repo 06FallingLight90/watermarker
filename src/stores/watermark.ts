@@ -82,6 +82,8 @@ export const useWatermarkStore = defineStore("watermark", () => {
     field_styles: defaultFieldStyles(),
     trade_mark_enabled: true,
     trade_mark_scale: 15,
+    line_spacing: 1.6,
+    trade_mark_spacing: 1.0,
   });
 
   /// MIME format of the loaded logo image ("png" | "jpeg"), used to decode raw base64

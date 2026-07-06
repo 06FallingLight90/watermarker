@@ -4,6 +4,12 @@
 
 ### 新增
 
+- **EXIF 统一布局间距控制**：统一布局模式下新增行间距和商标间距调整功能
+  - `ExifWatermarkConfig` 新增 `line_spacing`（行间距，默认 1.6，范围 0.5–5.0）和 `trade_mark_spacing`（商标垂直空间倍率，默认 1.0，范围 0.2–3.0）
+  - 行间距控制文字行之间的垂直间距（替换原先硬编码的 1.6x 倍率）
+  - 商标间距为商标 Logo 总垂直空间的直接倍率（1.0=自然高度，小于 1.0 可缩小间距）
+  - UI 在统一布局模式的平铺间距下方新增两个滑块，商标间距仅在启用商标替换时显示
+  - `drawExifWatermarkStatic()` 中总高度计算现已正确计入商标间距，改善居中精度
 - **图片缓存机制**：引入 LRU 图片缓存（`useImageCache`），在图片加入批处理队列时后台预加载，预览切换时直接从缓存读取，跳过 Rust 解码（~200-500ms）和浏览器 Image 解码（~50-150ms），预览切换速度提升约 10 倍
   - `src/composables/useImageCache.ts`：模块级单例缓存，最多缓存 10 张图片的 base64 + HTMLImageElement + EXIF，LRU 淘汰策略
   - `src/composables/useCanvas.ts`：`renderPreview()` 自动检测缓存，命中时直接使用已解码的 Image 元素
