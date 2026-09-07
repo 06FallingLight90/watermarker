@@ -1,5 +1,22 @@
 # 更新日志
 
+## v0.4.4 (2026-09)
+
+### 修复
+
+- **导出保留原图 EXIF 元数据**：修复导出的 PNG/JPEG 丢失相机参数、GPS、拍摄时间等 EXIF 信息的问题。Canvas 导出只保留像素、会丢弃全部元数据；现在导出完成后通过新增的 `inject_exif` Tauri 命令把原图 EXIF 写回导出文件（JPEG 注入 APP1 Exif 段，PNG 注入 `eXIf` chunk），并将 Orientation 标签重置为 1 以避免查看器二次旋转
+  - `src-tauri/src/engine/image.rs`：新增 `copy_exif_from()`（EXIF 提取 + 方向重置 + 注入），支持 JPEG 源（APP1）与 PNG 源（eXIf）提取
+  - `src-tauri/src/commands/image.rs` / `lib.rs`：新增并注册 `inject_exif` 命令
+  - `src/components/export/ExportSection.vue`：单张导出后调用注入
+  - `src/components/BatchPanel.vue`：批处理每张导出后调用注入
+  - `src/composables/useTauriCommands.ts`：新增 `injectExif` 包装
+  - 新增 `src-tauri/tests/exif_inject.rs` 集成测试（5 项：JPEG→JPEG、JPEG→PNG、PNG 往返、无 EXIF 返回 None、真实相机照片验证）
+
+### 已知限制（实测确认）
+
+- **Windows 资源管理器无法显示 PNG 的 EXIF**：Windows Shell 的 PNG 属性处理器不读取 eXIf chunk（PNG 3.0 标准，2017 年加入），右键属性-详细信息仅显示分辨率/位深度等基础字段。EXIF 数据已完整写入文件（应用内、exiftool、FastStone 等支持 eXIf 的工具可读）。如需在资源管理器中查看相机参数，请导出 JPEG
+  - `ExportSection.vue` / `BatchPanel.vue`：选择 PNG 时在 Windows 平台显示该提示
+
 ## v0.4.3 (2026-07)
 
 ### 新增

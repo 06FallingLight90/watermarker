@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use crate::engine::image::{save_image as engine_save, list_system_fonts as engine_list_fonts, load_raw, FontEntry, ImageInfo, RawImageData};
+use crate::engine::image::{save_image as engine_save, list_system_fonts as engine_list_fonts, load_raw, copy_exif_from as engine_copy_exif, FontEntry, ImageInfo, RawImageData};
 
 #[tauri::command]
 pub fn load_image(path: String) -> Result<ImageInfo, String> {
@@ -40,4 +40,24 @@ pub fn export_file(base64: String, output_path: String) -> Result<(), String> {
     std::fs::write(&output_path, &data)
         .map_err(|e| format!("Failed to write file: {e}"))?;
     Ok(())
+}
+
+/// Copy the source image's EXIF metadata into an exported file.
+/// The Canvas export pipeline drops all metadata; this restores it.
+/// Returns true if EXIF was found and injected, false if the source has none.
+#[tauri::command]
+pub fn inject_exif(source_path: String, output_path: String) -> Result<bool, String> {
+    let source = std::fs::read(&source_path)
+        .map_err(|e| format!("Failed to read source: {e}"))?;
+    let output = std::fs::read(&output_path)
+        .map_err(|e| format!("Failed to read output: {e}"))?;
+
+    match engine_copy_exif(&source, &output) {
+        Some(data) => {
+            std::fs::write(&output_path, &data)
+                .map_err(|e| format!("Failed to write output: {e}"))?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }

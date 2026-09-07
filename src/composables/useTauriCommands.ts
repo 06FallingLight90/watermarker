@@ -68,5 +68,10 @@ export function useTauriCommands() {
     return invoke("export_file", { base64, outputPath });
   }
 
-  return { loadImage, loadImageRaw, listSystemFonts, saveImage, readExif, applyTextWatermark, applyLogoWatermark, exportFile };
+  /** Copy the source image's EXIF into an exported file (best-effort). */
+  async function injectExif(sourcePath: string, outputPath: string): Promise<boolean> {
+    return invoke<boolean>("inject_exif", { sourcePath, outputPath });
+  }
+
+  return { loadImage, loadImageRaw, listSystemFonts, saveImage, readExif, applyTextWatermark, applyLogoWatermark, exportFile, injectExif };
 }

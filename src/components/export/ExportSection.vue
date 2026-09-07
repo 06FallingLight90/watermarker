@@ -9,11 +9,12 @@ import { renderFullRes, type ExportFormat } from "@/composables/useCanvas";
 const imageStore = useImageStore();
 const batchStore = useBatchStore();
 const watermarkStore = useWatermarkStore();
-const { exportFile } = useTauriCommands();
+const { exportFile, injectExif } = useTauriCommands();
 
 const exporting = ref(false);
 const exportError = ref("");
 const exportFormat = ref<ExportFormat>("png");
+const isWindows = navigator.platform.toLowerCase().includes("win");
 
 async function handleExport() {
   if (!imageStore.currentImage) return;
@@ -39,6 +40,13 @@ async function handleExport() {
     // Render at full original resolution with chosen format
     const result = await renderFullRes(exportFormat.value);
     await exportFile(result, savePath);
+
+    // Canvas re-encoding drops EXIF — restore camera metadata from the original
+    try {
+      await injectExif(imageStore.filePath, savePath);
+    } catch (e) {
+      console.warn("Failed to inject EXIF:", e);
+    }
 
     alert(`导出成功: ${savePath}`);
   } catch (e) {
@@ -70,6 +78,10 @@ function addToBatch() {
       </label>
     </div>
 
+    <p v-if="exportFormat === 'png' && isWindows" class="format-hint">
+      提示：Windows 资源管理器无法显示 PNG 的 EXIF（相机参数等），EXIF 数据仍会写入文件（可在应用内或支持 eXIf 的工具中查看）。如需在资源管理器中查看，请用 JPEG 导出。
+    </p>
+
     <button class="btn btn-primary" @click="handleExport" :disabled="!imageStore.hasImage || exporting">
       {{ exporting ? "导出中..." : "导出单张图片" }}
     </button>
@@ -100,5 +112,12 @@ function addToBatch() {
   display: flex;
   gap: 16px;
   margin-bottom: 4px;
+}
+
+.format-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c9a04a;
 }
 </style>

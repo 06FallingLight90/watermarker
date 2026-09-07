@@ -105,6 +105,206 @@ fn apply_orientation(img: &mut image::DynamicImage, orientation: u32) {
     };
 }
 
+/// Copy the EXIF profile from a source image into an exported image.
+/// The frontend Canvas export re-encodes pixels only and drops all metadata;
+/// this re-attaches the original EXIF (camera parameters, GPS, etc.).
+/// Returns None if the source has no EXIF or the output format is unsupported.
+pub fn copy_exif_from(source_data: &[u8], output_data: &[u8]) -> Option<Vec<u8>> {
+    let mut exif = extract_exif(source_data)?;
+    // The export pipeline already physically applies the EXIF orientation,
+    // so keep the tag but reset it to 1 to avoid double-rotation in viewers.
+    reset_exif_orientation(&mut exif);
+    inject_exif_into_image(output_data, &exif)
+}
+
+/// Extract the raw EXIF profile (TIFF payload, without the JPEG "Exif\0\0" prefix)
+/// from a JPEG (APP1 segment) or PNG (eXIf chunk) source.
+fn extract_exif(data: &[u8]) -> Option<Vec<u8>> {
+    if data.starts_with(&[0xFF, 0xD8]) {
+        extract_exif_from_jpeg(data)
+    } else if data.starts_with(&[0x89, b'P', b'N', b'G']) {
+        extract_exif_from_png(data)
+    } else {
+        None
+    }
+}
+
+/// JPEG: scan markers for an APP1 (0xE1) segment with the "Exif\0\0" signature.
+fn extract_exif_from_jpeg(data: &[u8]) -> Option<Vec<u8>> {
+    let mut i = 2;
+    while i + 4 <= data.len() {
+        if data[i] != 0xFF {
+            return None;
+        }
+        let marker = data[i + 1];
+        // Standalone markers and restart intervals carry no length field
+        if marker == 0x01 || (0xD0..=0xD7).contains(&marker) {
+            i += 2;
+            continue;
+        }
+        // SOS / EOI — no metadata segments beyond this point
+        if marker == 0xDA || marker == 0xD9 {
+            return None;
+        }
+        if i + 4 > data.len() {
+            return None;
+        }
+        let len = u16::from_be_bytes([data[i + 2], data[i + 3]]) as usize;
+        if len < 2 || i + 2 + len > data.len() {
+            return None;
+        }
+        if marker == 0xE1 && len >= 8 && &data[i + 4..i + 10] == b"Exif\x00\x00" {
+            return Some(data[i + 10..i + 2 + len].to_vec());
+        }
+        i += 2 + len;
+    }
+    None
+}
+
+/// PNG: scan chunks (len(4) + type(4) + data + crc(4)) for an `eXIf` chunk.
+fn extract_exif_from_png(data: &[u8]) -> Option<Vec<u8>> {
+    let mut i = 8;
+    while i + 8 <= data.len() {
+        let len = u32::from_be_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]) as usize;
+        let ctype = &data[i + 4..i + 8];
+        if ctype == b"IEND" {
+            break;
+        }
+        if i + 8 + len + 4 > data.len() {
+            return None;
+        }
+        if ctype == b"eXIf" {
+            return Some(data[i + 8..i + 8 + len].to_vec());
+        }
+        i += 8 + len + 4;
+    }
+    None
+}
+
+/// Set the EXIF Orientation tag (0x0112) to 1 (normal) in place.
+/// The preview/export pipeline already physically rotates the pixels, so a
+/// stale orientation value would make viewers rotate the image a second time.
+fn reset_exif_orientation(exif: &mut [u8]) {
+    if exif.len() < 8 {
+        return;
+    }
+    let little_endian = match &exif[0..2] {
+        b"II" => true,
+        b"MM" => false,
+        _ => return,
+    };
+    let magic_ok = match &exif[2..4] {
+        [0x2A, 0x00] | [0x00, 0x2A] => true,
+        _ => false,
+    };
+    if !magic_ok {
+        return;
+    }
+    let read_u16 = |d: &[u8], off: usize| -> u16 {
+        if little_endian {
+            u16::from_le_bytes([d[off], d[off + 1]])
+        } else {
+            u16::from_be_bytes([d[off], d[off + 1]])
+        }
+    };
+    let read_u32 = |d: &[u8], off: usize| -> u32 {
+        if little_endian {
+            u32::from_le_bytes([d[off], d[off + 1], d[off + 2], d[off + 3]])
+        } else {
+            u32::from_be_bytes([d[off], d[off + 1], d[off + 2], d[off + 3]])
+        }
+    };
+    let ifd0 = read_u32(exif, 4) as usize;
+    if ifd0 + 2 > exif.len() {
+        return;
+    }
+    let count = read_u16(exif, ifd0) as usize;
+    for n in 0..count {
+        let entry = ifd0 + 2 + n * 12;
+        if entry + 12 > exif.len() {
+            return;
+        }
+        if read_u16(exif, entry) == 0x0112 {
+            // Orientation is a SHORT stored inline at offset 8 within the entry
+            if little_endian {
+                exif[entry + 8] = 1;
+                exif[entry + 9] = 0;
+            } else {
+                exif[entry + 8] = 0;
+                exif[entry + 9] = 1;
+            }
+            return;
+        }
+    }
+}
+
+/// Inject EXIF data into an exported image: JPEG gets an APP1 segment,
+/// PNG gets an `eXIf` chunk.
+fn inject_exif_into_image(image_data: &[u8], exif: &[u8]) -> Option<Vec<u8>> {
+    if image_data.starts_with(&[0xFF, 0xD8]) {
+        inject_exif_into_jpeg(image_data, exif)
+    } else if image_data.starts_with(&[0x89, b'P', b'N', b'G']) {
+        inject_exif_into_png(image_data, exif)
+    } else {
+        None
+    }
+}
+
+/// JPEG: SOI (FF D8) + new APP1 (FF E1, length, "Exif\0\0", payload) + original rest.
+fn inject_exif_into_jpeg(jpeg: &[u8], exif: &[u8]) -> Option<Vec<u8>> {
+    let seg_len = exif.len() + 2 + 6; // length field + "Exif\0\0" signature + payload
+    if seg_len > u16::MAX as usize {
+        return None;
+    }
+    let mut out = Vec::with_capacity(jpeg.len() + seg_len);
+    out.extend_from_slice(&jpeg[..2]);
+    out.push(0xFF);
+    out.push(0xE1);
+    out.extend_from_slice(&(seg_len as u16).to_be_bytes());
+    out.extend_from_slice(b"Exif\x00\x00");
+    out.extend_from_slice(exif);
+    out.extend_from_slice(&jpeg[2..]);
+    Some(out)
+}
+
+/// PNG: insert an eXIf chunk right after the mandatory IHDR chunk.
+/// PNG requires IHDR to be the first chunk; eXIf must precede IDAT.
+fn inject_exif_into_png(png: &[u8], exif: &[u8]) -> Option<Vec<u8>> {
+    // Signature(8) + len(4) + "IHDR"(4) + data(13) + crc(4)
+    if png.len() < 8 + 8 + 13 + 4 || &png[12..16] != b"IHDR" {
+        return None;
+    }
+    let ihdr_len = u32::from_be_bytes([png[8], png[9], png[10], png[11]]) as usize;
+    let insert_at = 8 + 4 + 4 + ihdr_len + 4;
+    if insert_at > png.len() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(png.len() + exif.len() + 12);
+    out.extend_from_slice(&png[..insert_at]);
+    out.extend_from_slice(&(exif.len() as u32).to_be_bytes());
+    out.extend_from_slice(b"eXIf");
+    out.extend_from_slice(exif);
+    let mut crc_input = Vec::with_capacity(exif.len() + 4);
+    crc_input.extend_from_slice(b"eXIf");
+    crc_input.extend_from_slice(exif);
+    out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+    out.extend_from_slice(&png[insert_at..]);
+    Some(out)
+}
+
+/// Standard PNG CRC-32 (reflected polynomial 0xEDB88320).
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &b in data {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            let mask = 0u32.wrapping_sub(crc & 1);
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc
+}
+
 /// Read raw file bytes and base64-encode them without any image re-encoding.
 /// Preserves the original format (including PNG alpha channel).
 pub fn load_raw(path: &str) -> Result<RawImageData, String> {

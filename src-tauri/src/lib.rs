@@ -14,6 +14,7 @@ pub fn run() {
             image::load_image_raw,
             image::save_image,
             image::export_file,
+            image::inject_exif,
             exif::read_exif,
             watermark::apply_text_watermark,
             watermark::apply_logo_watermark,

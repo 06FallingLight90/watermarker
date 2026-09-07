@@ -11,11 +11,12 @@ const batchStore = useBatchStore();
 const imageStore = useImageStore();
 const watermarkStore = useWatermarkStore();
 const imageCache = useImageCache();
-const { exportFile, loadImage: loadImageCmd, loadImageRaw, readExif } = useTauriCommands();
+const { exportFile, injectExif, loadImage: loadImageCmd, loadImageRaw, readExif } = useTauriCommands();
 
 const expanded = ref(false);
 const outputDir = ref("");
 const batchFormat = ref<ExportFormat>("png");
+const isWindows = navigator.platform.toLowerCase().includes("win");
 
 async function selectFiles() {
   try {
@@ -159,6 +160,13 @@ async function startBatch() {
       const outPath = `${outputDir.value}/watermarked_${fileName.replace(/\.[^.]+$/, "")}.${ext}`;
       await exportFile(base64, outPath);
 
+      // Canvas re-encoding drops EXIF — restore camera metadata from the original
+      try {
+        await injectExif(entry.path, outPath);
+      } catch (e) {
+        console.warn(`Failed to inject EXIF for ${fileName}:`, e);
+      }
+
       batchStore.updateProgress({
         current: i + 1,
         total,
@@ -230,6 +238,10 @@ function removeFile(index: number) {
             JPEG
           </label>
         </div>
+
+        <p v-if="batchFormat === 'png' && isWindows" class="format-hint">
+          提示：Windows 资源管理器无法显示 PNG 的 EXIF（相机参数等），EXIF 数据仍会写入文件。如需在资源管理器中查看，请用 JPEG。
+        </p>
 
         <button
           class="btn btn-sm btn-primary"
@@ -331,6 +343,14 @@ function removeFile(index: number) {
 .format-select {
   display: flex;
   gap: 8px;
+}
+
+.format-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c9a04a;
+  width: 100%;
 }
 
 .radio-label {
