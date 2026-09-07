@@ -6,6 +6,7 @@ import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
 import { renderOffscreenWithConfig, type ExportFormat } from "@/composables/useWatermarkDrawing";
 import { useImageCache, preloadProgress } from "@/composables/useImageCache";
+import { getDialogDir, rememberDir, rememberFileDir } from "@/utils/dialogPaths";
 
 const batchStore = useBatchStore();
 const imageStore = useImageStore();
@@ -23,10 +24,12 @@ async function selectFiles() {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
       multiple: true,
+      defaultPath: getDialogDir("import"),
       filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "bmp", "webp"] }],
     });
     if (selected) {
       const files = Array.isArray(selected) ? selected : [selected as string];
+      rememberFileDir("import", files[0]);
       // All files get the current watermark config as their default
       batchStore.addFiles(files, watermarkStore.snapshotConfig());
 
@@ -99,9 +102,11 @@ async function selectOutputDir() {
       directory: true,
       multiple: false,
       title: "选择输出目录",
+      defaultPath: getDialogDir("export"),
     });
     if (selected) {
       outputDir.value = selected as string;
+      rememberDir("export", selected as string);
     }
   } catch (e) {
     console.error("Failed to select output dir:", e);

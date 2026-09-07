@@ -5,6 +5,7 @@ import { useBatchStore } from "@/stores/batch";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
 import { renderFullRes, type ExportFormat } from "@/composables/useCanvas";
+import { getDialogDir, rememberFileDir } from "@/utils/dialogPaths";
 
 const imageStore = useImageStore();
 const batchStore = useBatchStore();
@@ -25,17 +26,19 @@ async function handleExport() {
   try {
     const ext = exportFormat.value;
     const { save } = await import("@tauri-apps/plugin-dialog");
+    const rememberedDir = getDialogDir("export");
     const savePath = await save({
       filters: [
         { name: ext === "png" ? "PNG (无损)" : "JPEG", extensions: [ext] },
       ],
-      defaultPath: `watermarked.${ext}`,
+      defaultPath: rememberedDir ? `${rememberedDir}/watermarked.${ext}` : `watermarked.${ext}`,
     });
 
     if (!savePath) {
       exporting.value = false;
       return;
     }
+    rememberFileDir("export", savePath);
 
     // Render at full original resolution with chosen format
     const result = await renderFullRes(exportFormat.value);

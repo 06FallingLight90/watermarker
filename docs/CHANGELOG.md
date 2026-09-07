@@ -17,6 +17,12 @@
 - **Windows 资源管理器无法显示 PNG 的 EXIF**：Windows Shell 的 PNG 属性处理器不读取 eXIf chunk（PNG 3.0 标准，2017 年加入），右键属性-详细信息仅显示分辨率/位深度等基础字段。EXIF 数据已完整写入文件（应用内、exiftool、FastStone 等支持 eXIf 的工具可读）。如需在资源管理器中查看相机参数，请导出 JPEG
   - `ExportSection.vue` / `BatchPanel.vue`：选择 PNG 时在 Windows 平台显示该提示
 
+### 体验优化
+
+- 导入图片、导出（保存/批处理输出目录）、Logo 水印三类对话框各自独立记住上次使用的目录（localStorage 持久化），打开对话框时自动定位，不再互相干扰
+  - 新增 `src/utils/dialogPaths.ts`：`getDialogDir` / `rememberFileDir` / `rememberDir`
+  - `LeftPanel.vue` / `BatchPanel.vue`（导入）、`ExportSection.vue` / `BatchPanel.vue`（导出）、`LogoWatermarkPanel.vue`（Logo）
+
 ## v0.4.3 (2026-07)
 
 ### 新增

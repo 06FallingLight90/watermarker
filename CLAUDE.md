@@ -59,6 +59,7 @@ src/
 ├── types/index.ts          # TypeScript interfaces
 ├── utils/
 │   ├── colorConvert.ts     # rgbToHex / hexToRgb helpers
+│   ├── dialogPaths.ts      # Per-operation dialog directory memory (import / export / logo)
 │   └── tradeMarks.ts       # Camera brand trade mark image preloading & matching
 ├── assets/
 │   └── trade_marks/        # Canon / Nikon / Sony logo PNGs

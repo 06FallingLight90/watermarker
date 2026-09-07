@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
+import { getDialogDir, rememberFileDir } from "@/utils/dialogPaths";
 
 const watermarkStore = useWatermarkStore();
 const { loadImageRaw } = useTauriCommands();
@@ -14,10 +15,12 @@ async function selectLogo() {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
       multiple: false,
+      defaultPath: getDialogDir("logo"),
       filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "svg", "webp"] }],
     });
     if (selected) {
       const path = selected as string;
+      rememberFileDir("logo", path);
       const raw = await loadImageRaw(path);
       watermarkStore.logoConfig.logo_base64 = raw.base64;
       watermarkStore.logoFormat = raw.format;

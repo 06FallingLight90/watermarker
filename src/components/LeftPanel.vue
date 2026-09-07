@@ -5,6 +5,7 @@ import { useBatchStore } from "@/stores/batch";
 import { useWatermarkStore } from "@/stores/watermark";
 import { useTauriCommands } from "@/composables/useTauriCommands";
 import { useImageCache } from "@/composables/useImageCache";
+import { getDialogDir, rememberFileDir } from "@/utils/dialogPaths";
 
 const imageStore = useImageStore();
 const batchStore = useBatchStore();
@@ -19,6 +20,7 @@ async function handleFileSelect() {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
       multiple: true,
+      defaultPath: getDialogDir("import"),
       filters: [
         {
           name: "Images",
@@ -32,6 +34,7 @@ async function handleFileSelect() {
       error.value = "";
 
       const files = Array.isArray(selected) ? selected : [selected as string];
+      rememberFileDir("import", files[0]);
 
       // Save current watermark config to active batch entry (if any)
       if (batchStore.activeIndex !== null) {
