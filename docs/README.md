@@ -11,7 +11,6 @@
 
 水印采用“相对大小”、“相对位置”的方案，自动适应不同尺寸照片。同样支持对队列中的各照片进行单独水印设计，快捷美观。
 
-
 起源于业余摄影爱好者的一次UML建模课作业。开发新手之作有不足之处请指教！！！
 
 ![示例](../src/assets/sample.jpg "应用示例")
@@ -39,11 +38,17 @@
 
 [![下载 macOS 安装包](https://img.shields.io/badge/下载-macOS%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.3/Watermarker_0.4.2_aarch64.dmg)
 
+> **macOS 署名说明**
+>
+> 由于应用未经过 Apple 官方公证（需 \$99/年 Apple Developer 账号），macOS 使用 **ad-hoc 代码签名** (`signingIdentity: "-"`)。用户首次打开前需在终端执行：
+>
+> ```bash
+> sudo xattr -rd com.apple.quarantine /Applications/Watermarker.app
+> ```
+>
+> 然后即可正常打开。
+
 [![下载 Linux 安装包](https://img.shields.io/badge/下载-Linux%20安装包-brightgreen)](https://github.com/06FallingLight90/watermarker/releases/download/v0.4.3/Watermarker_0.4.2_amd64.AppImage)
-
-
-
-### 环境要求
 
 - **Node.js** >= 18
 - **Rust** >= 1.70 (MSVC 工具链)
@@ -130,20 +135,21 @@ watermarker/
 
 ## 技术栈
 
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| 桌面框架 | Tauri v2 | Rust + WebView，轻量化跨平台 |
-| 前端框架 | Vue 3 + Composition API | 响应式 UI |
-| 状态管理 | Pinia | 类型友好的 Vue 状态管理 |
-| 构建工具 | Vite 6 | 快速开发 & 打包 |
-| 类型检查 | TypeScript 5.5 | 类型安全 |
-| 图像处理 (Rust) | image 0.25, imageproc 0.25, ab_glyph 0.2 | 服务端图片解码/编码/水印 |
-| EXIF 解析 | kamadak-exif 0.6 | 读取照片元数据 |
-| 图像渲染 (前端) | HTML5 Canvas API | 预览 & 全分辨率导出 |
+| 层级          | 技术                                        | 说明                    |
+| ----------- | ----------------------------------------- | --------------------- |
+| 桌面框架        | Tauri v2                                  | Rust + WebView，轻量化跨平台 |
+| 前端框架        | Vue 3 + Composition API                   | 响应式 UI                |
+| 状态管理        | Pinia                                     | 类型友好的 Vue 状态管理        |
+| 构建工具        | Vite 6                                    | 快速开发 & 打包             |
+| 类型检查        | TypeScript 5.5                            | 类型安全                  |
+| 图像处理 (Rust) | image 0.25, imageproc 0.25, ab\_glyph 0.2 | 服务端图片解码/编码/水印         |
+| EXIF 解析     | kamadak-exif 0.6                          | 读取照片元数据               |
+| 图像渲染 (前端)   | HTML5 Canvas API                          | 预览 & 全分辨率导出           |
 
 ## 相关文档
 
-- **[新手教程](TUTORIAL.md) ← 如果你是新手，从这里开始！** 由浅入深对照代码学习系统架构、数据流和技术栈
+- **[新手教程](TUTORIAL.md)** **← 如果你是新手，从这里开始！** 由浅入深对照代码学习系统架构、数据流和技术栈
 - [架构说明](ARCHITECTURE.md) — 渲染管线、数据流、设计决策
 - [开发与 CI/CD 工作流](WORKFLOW.md) — 本地构建、发布流程、自动化构建
 - [更新日志](CHANGELOG.md) — 版本历史与变更记录
+
