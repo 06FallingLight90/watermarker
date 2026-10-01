@@ -4,6 +4,11 @@
 
 ### 修复
 
+- **队列预览水印配置丢失**：修复"打开图片 → 追加多张 → 编辑水印 → 切换到其他图片再切回"后水印设置回退的问题。根因是预览图与队列 `activeIndex` 脱钩：文件入队/自动预览时从不 `setActive`，导致后续水印编辑没有保存目标，切换文件时 `openBatchFile` 直接加载入队时的旧配置快照
+  - `src/stores/batch.ts`：新增 `setActiveByPath()`——按预览文件路径同步 `activeIndex`（不在队列中则置 null）
+  - `src/components/LeftPanel.vue`：入队后及内联首图预览后同步 active；打开新图片时不再把 active 置空（预览图仍在队列中，应保持指向）
+  - `src/components/BatchPanel.vue`：`selectFiles` 入队后同步 active
+
 - **导出保留原图 EXIF 元数据**：修复导出的 PNG/JPEG 丢失相机参数、GPS、拍摄时间等 EXIF 信息的问题。Canvas 导出只保留像素、会丢弃全部元数据；现在导出完成后通过新增的 `inject_exif` Tauri 命令把原图 EXIF 写回导出文件（JPEG 注入 APP1 Exif 段，PNG 注入 `eXIf` chunk），并将 Orientation 标签重置为 1 以避免查看器二次旋转
   - `src-tauri/src/engine/image.rs`：新增 `copy_exif_from()`（EXIF 提取 + 方向重置 + 注入），支持 JPEG 源（APP1）与 PNG 源（eXIf）提取
   - `src-tauri/src/commands/image.rs` / `lib.rs`：新增并注册 `inject_exif` 命令

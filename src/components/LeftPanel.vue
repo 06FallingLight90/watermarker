@@ -39,11 +39,13 @@ async function handleFileSelect() {
       // Save current watermark config to active batch entry (if any)
       if (batchStore.activeIndex !== null) {
         batchStore.updateEntryConfig(batchStore.activeIndex, watermarkStore.snapshotConfig());
-        batchStore.setActive(null);
       }
 
       // Add all selected files to batch queue
       batchStore.addFiles(files, watermarkStore.snapshotConfig());
+
+      // Keep preview ↔ queue entry in sync so watermark edits persist to this entry
+      batchStore.setActiveByPath(imageStore.filePath);
 
       // Preload files into image cache (background, non-blocking)
       imageCache.preloadAll(files);
@@ -53,6 +55,7 @@ async function handleFileSelect() {
         loading.value = false;
         // openBatchFile logic inline: load first file as preview
         const firstPath = files[0];
+        batchStore.setActiveByPath(firstPath);
         const cached = imageCache.get(firstPath);
         if (cached) {
           imageStore.setExif(cached.exif);

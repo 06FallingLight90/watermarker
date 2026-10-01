@@ -33,6 +33,9 @@ async function selectFiles() {
       // All files get the current watermark config as their default
       batchStore.addFiles(files, watermarkStore.snapshotConfig());
 
+      // Keep preview ↔ queue entry in sync so watermark edits persist to this entry
+      batchStore.setActiveByPath(imageStore.filePath);
+
       // Preload selected files into image cache (background, non-blocking)
       imageCache.preloadAll(files);
 

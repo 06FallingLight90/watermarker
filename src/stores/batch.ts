@@ -52,6 +52,16 @@ export const useBatchStore = defineStore("batch", () => {
     activeIndex.value = index;
   }
 
+  /** Point activeIndex at the entry matching the given preview path (null when absent/empty) */
+  function setActiveByPath(path: string | null) {
+    if (!path) {
+      activeIndex.value = null;
+      return;
+    }
+    const idx = entries.value.findIndex((e) => e.path === path);
+    activeIndex.value = idx >= 0 ? idx : null;
+  }
+
   /** Overwrite the config for the entry at the given index */
   function updateEntryConfig(index: number, config: BatchWatermarkConfig) {
     if (index >= 0 && index < entries.value.length) {
@@ -99,6 +109,7 @@ export const useBatchStore = defineStore("batch", () => {
     addFiles,
     removeFile,
     setActive,
+    setActiveByPath,
     updateEntryConfig,
     applyConfigToAll,
     clearFiles,
